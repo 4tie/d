@@ -1,0 +1,281 @@
+does the app work so? 
+1. Core Purpose of the Application
+
+The application is an AI-assisted Freqtrade Strategy Laboratory that:
+
+Runs real Freqtrade backtests on real historical data
+
+Presents results in two parallel outputs:
+
+A human-friendly analytical dashboard
+
+A machine-readable, fully detailed trade dossier
+
+Sends the detailed dossier to a local AI (Ollama) for root-cause analysis
+
+Produces actionable strategy modifications
+
+Allows the user to preview, encode, apply, and re-test changes in a controlled loop
+
+This is not a signal generator.
+It is a strategy diagnostics and optimization system.
+
+2. High-Level System Flow (End-to-End)
+User
+ └──▶ Strategy Selection
+        └──▶ Data Download
+               └──▶ Backtest Execution
+                      ├──▶ Human Dashboard
+                      └──▶ Machine Trade Dossier
+                               └──▶ AI Analysis (Ollama)
+                                      └──▶ Strategy Change Proposal
+                                             └──▶ Preview / Encode / Apply
+                                                    └──▶ Re-Backtest
+
+3. Step-by-Step Functional Breakdown
+Step 1: Strategy & Environment Selection
+
+What the app must do
+
+List available Freqtrade strategies from /user_data/strategies
+
+Allow selection of:
+
+Strategy
+
+Timeframe(s)
+
+Pairs
+
+Timerange
+
+dry-run wallet
+
+- Key requirement
+
+The app must read actual strategy files, not copies or abstractions
+
+All parameters must map 1:1 to Freqtrade CLI arguments
+Step 2: Market Data Management
+
+What happens
+
+Check if historical data exists locally
+
+If missing or outdated:
+
+Run freqtrade download-data
+
+Track:
+
+Data freshness
+
+Candle completeness
+
+Missing ranges
+
+Why this matters
+
+AI analysis must know whether performance issues come from:
+
+Low liquidity
+
+Gaps in candles
+
+Pair inactivity
+
+This metadata is later passed to the AI.
+Step 3: Backtest Execution Engine
+
+Execution
+
+Run real Freqtrade backtests via subprocess or API
+
+Capture:
+
+stdout
+
+JSON result file
+
+Trade CSV (if enabled)
+
+Artifacts produced
+
+backtest_result.json
+
+trades.json or trades.csv
+
+Metadata (runtime, config hash, strategy hash)
+
+No parsing shortcuts. Use real outputs.
+
+Step 4: Human-Friendly Results View (UI Layer)
+
+This is not what goes to AI.
+
+Display Elements
+
+Net profit / loss
+
+Sharpe / Sortino
+
+Max drawdown
+
+Win rate
+
+Avg trade duration
+
+Fees paid
+
+Trade distribution by pair
+
+Equity curve
+
+Entry vs exit reason breakdown
+Step 5: Full Trade Dossier Generation (AI Input)
+
+This is the critical file sent to Ollama.
+
+Contents (Structured, Deterministic)
+
+Strategy source code (exact version)
+
+Backtest config
+
+Exchange + fee model
+
+Pair metadata (volume, spread if available)
+
+Every trade:
+
+Timestamp
+
+Pair
+
+Entry signal(s)
+
+Exit signal(s)
+
+ROI
+
+Fees
+
+Stoploss / ROI hit / exit reason
+
+Aggregate statistics
+
+Known constraints (timeframe, startup candles)
+
+Format
+
+JSON (preferred)
+
+Or Markdown + embedded tables
+
+No prose, no interpretation
+
+Step 6: AI Analysis (Ollama)
+
+What the AI must do
+The AI does diagnostics, not guessing.
+
+Analysis Dimensions
+
+Entry quality
+
+Exit timing
+
+Fee drag
+
+Stoploss effectiveness
+
+Trade frequency
+
+Market regime mismatch
+
+Overfitting symptoms
+
+Risk/reward imbalance
+
+Output Structure
+
+Identified problems (ranked)
+
+Evidence from trades
+
+Suggested fixes
+
+Expected impact
+
+Risk of change
+
+No vague advice allowed.
+
+Step 7: Strategy Modification Proposal
+
+The AI produces three synchronized outputs:
+
+1. Explanation (Human)
+
+Why the change helps
+
+What problem it addresses
+
+2. Encoded Diff (Machine)
+
+Exact Python diff:
+
+Entry logic
+
+Exit logic
+
+Parameters
+
+No pseudocode
+
+3. Validation Notes
+
+What metrics should improve
+
+What could worsen
+
+Step 8: Preview / Encode / Apply Workflow
+Preview
+
+Side-by-side diff:
+
+Old vs new strategy
+
+Highlight changed logic blocks
+
+No file system changes yet
+
+Encode
+
+Validate:
+
+Syntax
+
+Freqtrade compatibility
+
+Parameter ranges
+
+Dry-run import
+
+Apply
+
+Versioned save:
+
+StrategyName_v2.py
+
+Preserve rollback history
+
+Update strategy registry
+
+Step 9: Automated Re-Backtest Loop
+
+Automatically re-run backtest
+
+Compare:
+
+Old vs new metrics
