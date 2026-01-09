@@ -10,6 +10,7 @@ os.environ["QT_RENDER_WIDGET_BACKEND"] = "software"
 os.environ["QT_X11_NO_MITSHM"] = "1"
 os.environ["QT_QPA_PLATFORM"] = "xcb"
 os.environ["QT_LOGGING_RULES"] = "*.debug=false;qt.qpa.*=false"
+os.environ["DISPLAY"] = ":0"
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QTabWidget, QLabel, QMessageBox)
