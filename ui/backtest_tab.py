@@ -556,6 +556,32 @@ class BacktestTab(QWidget):
                             if hasattr(analysis_tab, "on_load_last_backtest"):
                                 analysis_tab.on_load_last_backtest()
                             break
+                
+                # Also store the strategy code and results for the AI Analysis tab
+                if not hasattr(main_window, 'last_backtest_strategy'):
+                    setattr(main_window, 'last_backtest_strategy', strategy_code)
+                else:
+                    main_window.last_backtest_strategy = strategy_code
+                    
+                if not hasattr(main_window, 'last_backtest_results'):
+                    setattr(main_window, 'last_backtest_results', raw_payload)
+                else:
+                    main_window.last_backtest_results = raw_payload
+            except Exception:
+                pass
+
+            # Auto-load into AI Analysis tab
+            try:
+                main_window = self.window()
+                from PyQt6.QtWidgets import QTabWidget
+                tabs = main_window.findChild(QTabWidget)
+                if tabs:
+                    for i in range(tabs.count()):
+                        if tabs.tabText(i) == "AI Analysis":
+                            analysis_tab = tabs.widget(i)
+                            if hasattr(analysis_tab, "on_load_last_backtest"):
+                                analysis_tab.on_load_last_backtest()
+                            break
             except Exception:
                 pass
 
