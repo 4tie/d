@@ -34,7 +34,7 @@ class BacktestFrame(tk.Frame):
         ctrl_group = tk.LabelFrame(container, text="Configuration", bg=self.bg_color, fg=self.fg_color)
         ctrl_group.pack(fill="x", pady=5)
         
-        # Row 1: Timeframe and Timerange
+        # Row 1: Timeframe and Stake Amount
         row1 = tk.Frame(ctrl_group, bg=self.bg_color)
         row1.pack(fill="x", padx=5, pady=2)
 
@@ -44,23 +44,34 @@ class BacktestFrame(tk.Frame):
         self.tf_combo.pack(side="left", padx=5)
         self.tf_combo.bind("<<ComboboxSelected>>", self._schedule_save_prefs)
 
-        tk.Label(row1, text="Timerange:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
-        self.tr_var = tk.StringVar(value="")
-        self.tr_combo = ttk.Combobox(row1, textvariable=self.tr_var, width=25)
-        self._add_tr_presets()
-        self.tr_combo.pack(side="left", padx=5)
-        self.tr_combo.bind("<<ComboboxSelected>>", self._schedule_save_prefs)
-        self.tr_combo.bind("<FocusOut>", self._schedule_save_prefs)
-        
-        # Row 2: Pairs Selection
+        tk.Label(row1, text="Stake Amount:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
+        self.stake_var = tk.StringVar(value="100.0")
+        self.stake_entry = tk.Entry(row1, textvariable=self.stake_var, width=10, bg="#1e293b", fg=self.fg_color, insertbackground=self.fg_color)
+        self.stake_entry.pack(side="left", padx=5)
+        self.stake_entry.bind("<FocusOut>", self._schedule_save_prefs)
+
+        # Row 2: Timerange Selection
         row2 = tk.Frame(ctrl_group, bg=self.bg_color)
         row2.pack(fill="x", padx=5, pady=2)
 
-        tk.Label(row2, text="Pairs:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
+        tk.Label(row2, text="Timerange:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
+        self.tr_var = tk.StringVar(value="")
+        self.tr_combo = ttk.Combobox(row2, textvariable=self.tr_var, width=40)
+        self._add_tr_presets()
+        self.tr_combo.pack(side="left", padx=5, fill="x", expand=True)
+        self.tr_combo.bind("<<ComboboxSelected>>", self._schedule_save_prefs)
+        self.tr_combo.bind("<FocusOut>", self._schedule_save_prefs)
+        
+        # Row 3: Pairs Selection
+        row3 = tk.Frame(ctrl_group, bg=self.bg_color)
+        row3.pack(fill="x", padx=5, pady=2)
+
+        tk.Label(row3, text="Pairs:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
         self.pairs_var = tk.StringVar(value="")
-        self.pairs_entry = tk.Entry(row2, textvariable=self.pairs_var, width=50, bg="#1e293b", fg=self.fg_color, insertbackground=self.fg_color)
-        self.pairs_entry.pack(side="left", padx=5, fill="x", expand=True)
-        self.pairs_entry.bind("<FocusOut>", self._schedule_save_prefs)
+        self.pairs_combo = ttk.Combobox(row3, textvariable=self.pairs_var, width=60)
+        self.pairs_combo.pack(side="left", padx=5, fill="x", expand=True)
+        self.pairs_combo.bind("<<ComboboxSelected>>", self._schedule_save_prefs)
+        self.pairs_combo.bind("<FocusOut>", self._schedule_save_prefs)
 
         # Action Buttons
         btn_frame = tk.Frame(container, bg=self.bg_color)
@@ -112,10 +123,12 @@ class BacktestFrame(tk.Frame):
             for name in os.listdir(out_dir):
                 if name.endswith('.json'):
                     path = os.path.join(out_dir, name)
-                    with open(path, 'r') as f:
-                        data = json.load(f)
-                        tr = data.get('metadata', {}).get('timerange') or data.get('timerange')
-                        if tr: timeranges.add(tr)
+                    try:
+                        with open(path, 'r') as f:
+                            data = json.load(f)
+                            tr = data.get('metadata', {}).get('timerange') or data.get('timerange')
+                            if tr: timeranges.add(tr)
+                    except: continue
             
             current_values = list(self.tr_combo['values'])
             for tr in sorted(timeranges, reverse=True):
@@ -130,11 +143,15 @@ class BacktestFrame(tk.Frame):
                 cfg = json.load(f)
             if 'timeframe' in cfg:
                 self.tf_var.set(cfg['timeframe'])
+            if 'stake_amount' in cfg:
+                self.stake_var.set(str(cfg['stake_amount']))
             whitelist = cfg.get('exchange', {}).get('pair_whitelist', [])
             if whitelist:
                 self._known_pairs = whitelist
+                joined = ",".join(whitelist)
+                self.pairs_combo['values'] = [joined] + whitelist
                 if not self.pairs_var.get():
-                    self.pairs_var.set(",".join(whitelist))
+                    self.pairs_var.set(joined)
         except: pass
 
     def _load_prefs_from_app_config(self):
@@ -142,6 +159,7 @@ class BacktestFrame(tk.Frame):
             cfg = load_app_config()
             bt = cfg.get('backtest', {})
             if bt.get('timeframe'): self.tf_var.set(bt['timeframe'])
+            if bt.get('stake_amount'): self.stake_var.set(str(bt['stake_amount']))
             if bt.get('pairs'): self.pairs_var.set(bt['pairs'])
             if bt.get('timerange'): self.tr_var.set(bt['timerange'])
         except: pass
@@ -152,6 +170,7 @@ class BacktestFrame(tk.Frame):
                 cfg = load_app_config()
                 if 'backtest' not in cfg: cfg['backtest'] = {}
                 cfg['backtest']['timeframe'] = self.tf_var.get()
+                cfg['backtest']['stake_amount'] = self.stake_var.get()
                 cfg['backtest']['pairs'] = self.pairs_var.get()
                 
                 tr_val = self.tr_var.get()
@@ -166,9 +185,12 @@ class BacktestFrame(tk.Frame):
     def on_load_file(self):
         path = filedialog.askopenfilename(filetypes=[("Python Files", "*.py")])
         if path:
-            with open(path, 'r') as f:
-                self.txt_code.delete("1.0", "end")
-                self.txt_code.insert("1.0", f.read())
+            try:
+                with open(path, 'r') as f:
+                    self.txt_code.delete("1.0", "end")
+                    self.txt_code.insert("1.0", f.read())
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load file: {e}")
 
     def on_download(self):
         self.btn_download.config(state="disabled", text="Downloading...")
