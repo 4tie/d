@@ -13,6 +13,7 @@ class StrategyService:
     
     def __init__(self):
         self.generator = StrategyGenerator()
+        self.ollama_client = self.generator.ollama
         self.analysis_client = OllamaClient(base_url=self.generator.ollama.base_url, model=self.generator.ollama.model, options=self.generator.ollama.options)
         self.risk_client = OllamaClient(base_url=self.generator.ollama.base_url, model=self.generator.ollama.model, options=self.generator.ollama.options)
         self.saver = StrategySaver()
