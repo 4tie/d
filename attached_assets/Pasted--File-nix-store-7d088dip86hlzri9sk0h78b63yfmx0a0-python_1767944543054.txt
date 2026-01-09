@@ -1,0 +1,42 @@
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tkinter/__init__.py", line 1967, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tkinter/__init__.py", line 861, in callit
+    func(*args)
+  File "/home/runner/workspace/ui/tk/settings_frame.py", line 115, in <lambda>
+    self.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch models: {e}"))
+                                                                                   ^
+NameError: cannot access free variable 'e' where it is not associated with a value in enclosing scope
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tkinter/__init__.py", line 1967, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tkinter/__init__.py", line 861, in callit
+    func(*args)
+  File "/home/runner/workspace/ui/tk/settings_frame.py", line 115, in <lambda>
+    self.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch models: {e}"))
+                                                                                   ^
+NameError: cannot access free variable 'e' where it is not associated with a value in enclosing scope
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tkinter/__init__.py", line 1967, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tkinter/__init__.py", line 861, in callit
+    func(*args)
+  File "/home/runner/workspace/ui/tk/settings_frame.py", line 115, in <lambda>
+    self.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch models: {e}"))
+                                                                                   ^
+NameError: cannot access free variable 'e' where it is not associated with a value in enclosing scope
+Exception in Tkinter callback
+Traceback (most recent call last):
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tkinter/__init__.py", line 1967, in __call__
+    return self.func(*args)
+           ^^^^^^^^^^^^^^^^
+  File "/nix/store/7d088dip86hlzri9sk0h78b63yfmx0a0-python3-3.11.13/lib/python3.11/tkinter/__init__.py", line 861, in callit
+    func(*args)
+  File "/home/runner/workspace/ui/tk/settings_frame.py", line 115, in <lambda>
+    self.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch models: {e}"))
+                                                                                   ^
+NameError: cannot access free variable 'e' where it is not associated with a value in enclosing scope
