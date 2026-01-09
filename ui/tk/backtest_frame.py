@@ -143,6 +143,7 @@ class BacktestFrame(tk.Frame):
         self.txt_code = scrolledtext.ScrolledText(container, height=10, bg="#1e293b", fg=self.fg_color, insertbackground=self.fg_color)
         self.txt_code.pack(fill="x", padx=5, pady=5)
         
+        # Results Summary Text
         tk.Label(container, text="Results Summary:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w", padx=5)
         self.txt_results = scrolledtext.ScrolledText(container, bg="#0f172a", fg="#f1f5f9", state="disabled", height=12, font=("Consolas", 10))
         self.txt_results.pack(fill="both", expand=True, padx=5, pady=5)
@@ -152,6 +153,7 @@ class BacktestFrame(tk.Frame):
         self.txt_results.tag_configure("profit", foreground="#22c55e", font=("Consolas", 10, "bold"))
         self.txt_results.tag_configure("loss", foreground="#ef4444", font=("Consolas", 10, "bold"))
         self.txt_results.tag_configure("info", foreground="#94a3b8")
+        self.txt_results.tag_configure("metric", foreground="#fbbf24", font=("Consolas", 10, "bold"))
 
     def on_custom_tr(self):
         current = self.tr_var.get()
@@ -367,8 +369,17 @@ class BacktestFrame(tk.Frame):
                 match = re.search(pattern, stdout)
                 if match:
                     val = match.group(1)
-                    tag = "profit" if float(val) > 0 else "loss" if label != "Drawdown" else "info"
-                    self.txt_results.insert("end", f"{label}: {val}%\n", tag)
+                    try:
+                        f_val = float(val)
+                        if label == "Drawdown":
+                            tag = "loss" if f_val > 5 else "info"
+                        else:
+                            tag = "profit" if f_val > 0 else "loss"
+                    except:
+                        tag = "info"
+                    
+                    self.txt_results.insert("end", f"{label:15}: ", "info")
+                    self.txt_results.insert("end", f"{val}%\n", tag)
 
             self.txt_results.insert("end", "\n--- Full Output ---\n", "header")
             self.txt_results.insert("end", stdout, "info")
