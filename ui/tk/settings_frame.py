@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox
 import json
 import os
 import sys
+import threading
 
 # Add current directory to path for imports
 sys.path.insert(0, os.path.abspath(os.curdir))
