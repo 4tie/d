@@ -59,8 +59,9 @@ class CustomTimerangeDialog(tk.Toplevel):
         self.destroy()
 
 class BacktestFrame(tk.Frame):
-    def __init__(self, parent, bg_color, fg_color, accent_color):
+    def __init__(self, parent, main_app, bg_color, fg_color, accent_color):
         super().__init__(parent, bg=bg_color)
+        self.main_app = main_app
         self.bg_color = bg_color
         self.fg_color = fg_color
         self.accent_color = accent_color
@@ -282,20 +283,8 @@ class BacktestFrame(tk.Frame):
             
         # Store for analysis frame
         try:
-            # Safely navigate to the main app instance to store the strategy
-            # In our setup, BacktestFrame is a child of a container, which is a child of the Notebook (tabs)
-            # The Notebook is a child of the main application container.
-            # We use a more robust way to find the main app or store the data.
-            main_app = getattr(self, 'main_app', None)
-            if not main_app:
-                # Fallback: try to find it via parents if not explicitly passed
-                p = self.master
-                while p and not hasattr(p, 'last_backtest_strategy'):
-                    p = p.master
-                if p: main_app = p
-            
-            if main_app:
-                main_app.last_backtest_strategy = code
+            if hasattr(self, 'main_app') and self.main_app:
+                self.main_app.last_backtest_strategy = code
         except Exception as e:
             import logging
             logging.warning(f"Could not store last backtest strategy: {e}")
@@ -324,15 +313,8 @@ class BacktestFrame(tk.Frame):
                 )
                 # Store results for analysis frame
                 try:
-                    main_app = getattr(self, 'main_app', None)
-                    if not main_app:
-                        p = self.master
-                        while p and not hasattr(p, 'last_backtest_results'):
-                            p = p.master
-                        if p: main_app = p
-                    
-                    if main_app:
-                        main_app.last_backtest_results = res
+                    if hasattr(self, 'main_app') and self.main_app:
+                        self.main_app.last_backtest_results = res
                 except Exception as e:
                     import logging
                     logging.warning(f"Could not store last backtest results: {e}")

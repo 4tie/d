@@ -59,7 +59,7 @@ class SmartBotAppTK:
         self.builder_frame = AIBuilderFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
         self.analysis_frame = AIAnalysisFrame(self.notebook, self.client, self.strategy_service, self.bg_color, self.fg_color, self.accent_color)
         self.control_frame = BotControlFrame(self.notebook, self.client, self.strategy_service, self.bg_color, self.fg_color, self.accent_color)
-        self.backtest_frame = BacktestFrame(self.notebook, self.bg_color, self.fg_color, self.accent_color)
+        self.backtest_frame = BacktestFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
         self.settings_frame = SettingsFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
         
         self.notebook.add(self.dashboard_frame, text="Dashboard")
