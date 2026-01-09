@@ -25,11 +25,14 @@ class BacktestFrame(tk.Frame):
         
         tk.Label(top_frame, text="Timeframe:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
         self.tf_var = tk.StringVar(value="5m")
-        tk.Entry(top_frame, textvariable=self.tf_var, width=10).pack(side="left", padx=5)
+        self.tf_combo = ttk.Combobox(top_frame, textvariable=self.tf_var, width=8, values=["1m", "5m", "15m", "30m", "1h", "4h", "1d"])
+        self.tf_combo.pack(side="left", padx=5)
 
         tk.Label(top_frame, text="Timerange:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
         self.tr_var = tk.StringVar(value="")
-        tk.Entry(top_frame, textvariable=self.tr_var, width=15).pack(side="left", padx=5)
+        self.tr_combo = ttk.Combobox(top_frame, textvariable=self.tr_var, width=15)
+        self._add_tr_presets()
+        self.tr_combo.pack(side="left", padx=5)
         
         self.btn_run = tk.Button(top_frame, text="Run Backtest", command=self.on_run,
                                bg=self.accent_color, fg="white", font=("Arial", 10, "bold"))
@@ -46,6 +49,16 @@ class BacktestFrame(tk.Frame):
         tk.Label(self, text="Results:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w", padx=10)
         self.txt_results = scrolledtext.ScrolledText(self, bg="#1e293b", fg=self.fg_color, state="disabled")
         self.txt_results.pack(fill="both", expand=True, padx=10, pady=5)
+
+    def _add_tr_presets(self):
+        from datetime import date, timedelta
+        today = date.today()
+        presets = []
+        for d in [7, 30, 90, 180, 365]:
+            start = today - timedelta(days=d)
+            tr = f"{start.strftime('%Y%m%d')}-{today.strftime('%Y%m%d')}"
+            presets.append(tr)
+        self.tr_combo['values'] = presets
 
     def on_download(self):
         from utils.backtest_runner import download_data

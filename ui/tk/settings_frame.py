@@ -50,7 +50,8 @@ class SettingsFrame(tk.Frame):
         
         tk.Label(ol_group, text="Model:", bg=self.bg_color, fg=self.fg_color).grid(row=1, column=0, padx=5, pady=5)
         self.ol_model_var = tk.StringVar()
-        tk.Entry(ol_group, textvariable=self.ol_model_var, width=40).grid(row=1, column=1, padx=5, pady=5)
+        self.ol_model_combo = ttk.Combobox(ol_group, textvariable=self.ol_model_var, width=37)
+        self.ol_model_combo.grid(row=1, column=1, padx=5, pady=5)
 
         # Advanced AI Settings
         adv_group = tk.LabelFrame(container, text="Advanced AI Settings", bg=self.bg_color, fg=self.fg_color)
@@ -73,6 +74,7 @@ class SettingsFrame(tk.Frame):
         task_group.pack(fill="x", pady=10)
 
         self.task_vars = {}
+        self.task_combos = {}
         tasks = [
             ("Strategy Gen:", "strategy_generation"),
             ("Strategy Analysis:", "strategy_analysis"),
@@ -83,7 +85,13 @@ class SettingsFrame(tk.Frame):
             tk.Label(task_group, text=lbl_txt, bg=self.bg_color, fg=self.fg_color).grid(row=i, column=0, padx=5, pady=2)
             var = tk.StringVar()
             self.task_vars[key] = var
-            tk.Entry(task_group, textvariable=var, width=40).grid(row=i, column=1, padx=5, pady=2)
+            combo = ttk.Combobox(task_group, textvariable=var, width=37)
+            combo.grid(row=i, column=1, padx=5, pady=2)
+            self.task_combos[key] = combo
+
+        # Refresh Models Button
+        tk.Button(container, text="Refresh Available Models", command=self.refresh_models,
+                  bg="#6f42c1", fg="white").pack(pady=5)
 
         # Performance Stats
         perf_group = tk.LabelFrame(container, text="AI Performance", bg=self.bg_color, fg=self.fg_color)
@@ -95,6 +103,22 @@ class SettingsFrame(tk.Frame):
         btn_save = tk.Button(container, text="Save & Apply Settings", command=self.save_settings,
                            bg=self.accent_color, fg="white", font=("Arial", 10, "bold"))
         btn_save.pack(pady=20)
+
+    def refresh_models(self):
+        def _task():
+            try:
+                models = self.main_app.strategy_service.ollama_client.list_models()
+                if models:
+                    self.after(0, lambda: self._update_model_lists(models))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch models: {e}"))
+        threading.Thread(target=_task, daemon=True).start()
+
+    def _update_model_lists(self, models):
+        self.ol_model_combo['values'] = models
+        for combo in self.task_combos.values():
+            combo['values'] = models
+        messagebox.showinfo("Success", f"Loaded {len(models)} models from Ollama")
 
     def load_from_disk(self):
         try:

@@ -2,7 +2,7 @@
 AI Strategy Builder tab component
 """
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-                             QTextEdit, QMessageBox)
+                             QTextEdit, QMessageBox, QComboBox)
 
 class AIBuilderTab(QWidget):
     """AI Strategy Builder tab"""
@@ -18,6 +18,19 @@ class AIBuilderTab(QWidget):
         self.txt_prompt = QTextEdit()
         self.txt_prompt.setPlaceholderText("I want a strategy that buys Bitcoin when...")
         self.txt_prompt.setMaximumHeight(100)
+
+        template_row = QHBoxLayout()
+        template_row.addWidget(QLabel("Templates:"))
+        self.template_combo = QComboBox()
+        self.template_combo.addItems([
+            "Select a template...",
+            "Simple RSI Strategy",
+            "EMA Crossover",
+            "Bollinger Bands Mean Reversion",
+            "MACD with Volume Confirmation"
+        ])
+        self.template_combo.currentTextChanged.connect(self._on_template_selected)
+        template_row.addWidget(self.template_combo, 1)
 
         self.btn_generate = QPushButton("Generate strategy")
         self.btn_generate.clicked.connect(self.on_generate_clicked)
@@ -37,6 +50,7 @@ class AIBuilderTab(QWidget):
 
         layout.addWidget(lbl_instruct)
         layout.addWidget(self.txt_prompt)
+        layout.addLayout(template_row)
         gen_row = QHBoxLayout()
         gen_row.addWidget(self.btn_generate)
         gen_row.addWidget(self.btn_open_settings)
@@ -45,6 +59,16 @@ class AIBuilderTab(QWidget):
         layout.addWidget(self.btn_save)
         layout.addWidget(self.lbl_status)
         self.setLayout(layout)
+
+    def _on_template_selected(self, text):
+        templates = {
+            "Simple RSI Strategy": "Create a strategy that buys when RSI is below 30 and sells when RSI is above 70. Use 5m timeframe.",
+            "EMA Crossover": "Buy when the 20-period EMA crosses above the 50-period EMA. Sell when it crosses below.",
+            "Bollinger Bands Mean Reversion": "Buy when price touches the lower Bollinger Band. Sell when it touches the upper band.",
+            "MACD with Volume Confirmation": "Buy when MACD line crosses above the signal line and volume is above the 20-period average."
+        }
+        if text in templates:
+            self.txt_prompt.setPlainText(templates[text])
 
     def open_settings(self):
         if hasattr(self.main_app, 'tabs') and hasattr(self.main_app, 'settings_tab'):
