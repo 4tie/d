@@ -144,8 +144,14 @@ class BacktestFrame(tk.Frame):
         self.txt_code.pack(fill="x", padx=5, pady=5)
         
         tk.Label(container, text="Results Summary:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w", padx=5)
-        self.txt_results = scrolledtext.ScrolledText(container, bg="#1e293b", fg=self.fg_color, state="disabled", height=12)
+        self.txt_results = scrolledtext.ScrolledText(container, bg="#0f172a", fg="#f1f5f9", state="disabled", height=12, font=("Consolas", 10))
         self.txt_results.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Results Tags
+        self.txt_results.tag_configure("header", foreground="#3b82f6", font=("Consolas", 10, "bold"))
+        self.txt_results.tag_configure("profit", foreground="#22c55e", font=("Consolas", 10, "bold"))
+        self.txt_results.tag_configure("loss", foreground="#ef4444", font=("Consolas", 10, "bold"))
+        self.txt_results.tag_configure("info", foreground="#94a3b8")
 
     def on_custom_tr(self):
         current = self.tr_var.get()
@@ -343,16 +349,35 @@ class BacktestFrame(tk.Frame):
     def _apply_results(self, res):
         self.txt_results.config(state="normal")
         self.txt_results.delete("1.0", "end")
+        
         if isinstance(res, dict):
-            summary = [
-                f"Strategy: {res.get('strategy_class')}",
-                f"Result file: {res.get('result_file')}",
-                "\nSTDOUT:",
-                res.get('stdout', ''),
-                "\nSTDERR:",
-                res.get('stderr', '')
-            ]
-            self.txt_results.insert("1.0", "\n".join(summary))
+            self.txt_results.insert("end", f"=== Backtest Results ===\n", "header")
+            self.txt_results.insert("end", f"Strategy: {res.get('strategy_class')}\n", "info")
+            
+            stdout = res.get('stdout', '')
+            
+            # Extract key metrics if available in stdout
+            metrics = {
+                "Total Profit %": r"Total profit %:\s+([\d\.-]+)%",
+                "Win Rate %": r"Win rate %:\s+([\d\.-]+)%",
+                "Drawdown": r"Drawdown:\s+([\d\.-]+)%",
+            }
+            
+            for label, pattern in metrics.items():
+                match = re.search(pattern, stdout)
+                if match:
+                    val = match.group(1)
+                    tag = "profit" if float(val) > 0 else "loss" if label != "Drawdown" else "info"
+                    self.txt_results.insert("end", f"{label}: {val}%\n", tag)
+
+            self.txt_results.insert("end", "\n--- Full Output ---\n", "header")
+            self.txt_results.insert("end", stdout, "info")
+            
+            stderr = res.get('stderr', '')
+            if stderr:
+                self.txt_results.insert("end", "\n--- Errors ---\n", "loss")
+                self.txt_results.insert("end", stderr, "info")
         else:
             self.txt_results.insert("1.0", str(res))
+            
         self.txt_results.config(state="disabled")
