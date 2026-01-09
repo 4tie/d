@@ -25,6 +25,15 @@ class AIAnalysisFrame(tk.Frame):
         self.setup_ui()
 
     def setup_ui(self):
+        # Action Bar for quick loading
+        action_bar = tk.Frame(self, bg=self.bg_color)
+        action_bar.pack(fill="x", padx=10, pady=5)
+        
+        self.btn_load_last = tk.Button(action_bar, text="Load Last Backtest Data", 
+                                     command=self.on_load_last_backtest,
+                                     bg="#8b5cf6", fg="white", relief="flat", padx=10)
+        self.btn_load_last.pack(side="left")
+
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(expand=True, fill="both", padx=10, pady=10)
         
@@ -78,6 +87,35 @@ class AIAnalysisFrame(tk.Frame):
         m = re.search(r"CODE_CHANGE:(.*)", text, re.DOTALL)
         if m: return m.group(1).strip().replace("```python", "").replace("```", "").strip()
         return None
+
+    def on_load_last_backtest(self):
+        app = self.master.master.master
+        strategy = getattr(app, 'last_backtest_strategy', None)
+        results = getattr(app, 'last_backtest_results', None)
+        
+        if not strategy:
+            messagebox.showinfo("Info", "No recent backtest strategy found. Run a backtest first.")
+            return
+            
+        self.txt_input.delete("1.0", "end")
+        self.txt_input.insert("1.0", strategy)
+        
+        if results:
+            self.txt_results.config(state="normal")
+            self.txt_results.delete("1.0", "end")
+            
+            summary = ""
+            if isinstance(results, dict):
+                summary = f"Backtest Results for Analysis:\n"
+                summary += f"Strategy: {results.get('strategy_class')}\n"
+                summary += f"Stats: {results.get('stdout', '')[:500]}...\n"
+            else:
+                summary = str(results)
+                
+            self.txt_results.insert("1.0", f"--- LOADED BACKTEST RESULTS ---\n{summary}\n--- END RESULTS ---\n\n")
+            self.txt_results.config(state="disabled")
+            
+        messagebox.showinfo("Success", "Loaded strategy and results from last backtest.")
 
     def on_analyze(self):
         code = self.txt_input.get("1.0", "end-1c").strip()

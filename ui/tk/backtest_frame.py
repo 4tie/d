@@ -280,6 +280,9 @@ class BacktestFrame(tk.Frame):
             messagebox.showwarning("Warning", "Please paste strategy code.")
             return
             
+        # Store for analysis frame
+        self.master.master.master.last_backtest_strategy = code
+
         self.btn_run.config(state="disabled", text="Running...")
         self.txt_results.config(state="normal")
         self.txt_results.delete("1.0", "end")
@@ -302,6 +305,8 @@ class BacktestFrame(tk.Frame):
                     timerange=timerange,
                     pairs=self.pairs_var.get()
                 )
+                # Store results for analysis frame
+                self.master.master.master.last_backtest_results = res
                 self.after(0, lambda: self._apply_results(res))
             except Exception as e:
                 error_msg = str(e)
