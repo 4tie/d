@@ -16,7 +16,7 @@ try:
     from core.strategy_service import StrategyService
     from utils.logging_setup import setup_logging
     from ui.tk.bot_control_frame import BotControlFrame
-    from ui.tk.ai_builder_frame import AIBuilderFrame
+    from ui.tk.comparing_frame import ComparingFrame
     from ui.tk.ai_analysis_frame import AIAnalysisFrame
     from ui.tk.backtest_frame import BacktestFrame
     from ui.tk.chat_frame import ChatFrame
@@ -57,7 +57,7 @@ class SmartBotAppTK:
         
         # Create Tabs
         self.dashboard_frame = tk.Frame(self.notebook, bg=self.bg_color)
-        self.builder_frame = AIBuilderFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
+        self.comparing_frame = ComparingFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
         self.analysis_frame = AIAnalysisFrame(self.notebook, self.client, self.strategy_service, self.bg_color, self.fg_color, self.accent_color)
         self.control_frame = BotControlFrame(self.notebook, self.client, self.strategy_service, self.bg_color, self.fg_color, self.accent_color)
         self.backtest_frame = BacktestFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
@@ -65,7 +65,7 @@ class SmartBotAppTK:
         self.settings_frame = SettingsFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
         
         self.notebook.add(self.dashboard_frame, text="Dashboard")
-        self.notebook.add(self.builder_frame, text="AI Builder")
+        self.notebook.add(self.comparing_frame, text="Comparing")
         self.notebook.add(self.analysis_frame, text="AI Analysis")
         self.notebook.add(self.control_frame, text="Control")
         self.notebook.add(self.backtest_frame, text="Backtest")
