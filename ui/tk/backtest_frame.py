@@ -267,7 +267,8 @@ class BacktestFrame(tk.Frame):
                 download_data(BOT_CONFIG_PATH, timerange, self.tf_var.get(), self.pairs_var.get())
                 self.after(0, lambda: messagebox.showinfo("Success", "Data download complete"))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Error", str(e)))
+                error_msg = str(e)
+                self.after(0, lambda msg=error_msg: messagebox.showerror("Error", msg))
             finally:
                 self.after(0, lambda: self.btn_download.config(state="normal", text="Download Data"))
         
@@ -303,7 +304,8 @@ class BacktestFrame(tk.Frame):
                 )
                 self.after(0, lambda: self._apply_results(res))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Error", str(e)))
+                error_msg = str(e)
+                self.after(0, lambda msg=error_msg: messagebox.showerror("Error", msg))
             finally:
                 self.after(0, lambda: self.btn_run.config(state="normal", text="Run Backtest"))
         
