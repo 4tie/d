@@ -572,6 +572,9 @@ def run_backtest(
     timerange: Optional[str] = None,
     timeframe: Optional[str] = None,
     pairs: Optional[str] = None,
+    fee: Optional[float] = None,
+    dry_run_wallet: Optional[float] = None,
+    max_open_trades: Optional[int] = None,
 ) -> Dict[str, Any]:
     if not strategy_code or not strategy_code.strip():
         raise ValueError("Strategy code is empty")
@@ -642,6 +645,33 @@ def run_backtest(
             parts = [p.strip() for p in raw.replace(",", " ").split() if p.strip()]
             if parts:
                 cmd.extend(["-p", *parts])
+
+        if fee is not None:
+            try:
+                fee_val = float(fee)
+            except Exception as e:
+                raise ValueError(f"Invalid fee value: {e}")
+            if fee_val < 0:
+                raise ValueError("fee must be >= 0")
+            cmd.extend(["--fee", str(fee_val)])
+
+        if dry_run_wallet is not None:
+            try:
+                wallet_val = float(dry_run_wallet)
+            except Exception as e:
+                raise ValueError(f"Invalid dry_run_wallet value: {e}")
+            if wallet_val <= 0:
+                raise ValueError("dry_run_wallet must be > 0")
+            cmd.extend(["--dry-run-wallet", str(wallet_val)])
+
+        if max_open_trades is not None:
+            try:
+                mot_val = int(max_open_trades)
+            except Exception as e:
+                raise ValueError(f"Invalid max_open_trades value: {e}")
+            if mot_val < 0:
+                raise ValueError("max_open_trades must be >= 0")
+            cmd.extend(["--max-open-trades", str(mot_val)])
 
         logger.info("Running backtest: %s", " ".join(cmd))
 

@@ -60,27 +60,34 @@ class StrategyGenerator:
         except Exception as e:
             return False, f"Syntax error: {e}"
 
-        cls = None
+        def _is_istrategy_base(base: ast.expr) -> bool:
+            if isinstance(base, ast.Name):
+                return base.id == "IStrategy"
+            if isinstance(base, ast.Attribute):
+                return base.attr == "IStrategy"
+            return False
+
+        candidates: list[ast.ClassDef] = []
         for node in tree.body:
-            if isinstance(node, ast.ClassDef) and node.name == 'AIStrategy':
-                cls = node
-                break
+            if not isinstance(node, ast.ClassDef):
+                continue
+            if any(_is_istrategy_base(b) for b in node.bases):
+                candidates.append(node)
 
-        if cls is None:
-            return False, "Missing required strategy class: AIStrategy"
-
-        # Ensure it inherits from something (ideally IStrategy)
-        if not cls.bases:
-            return False, "AIStrategy must inherit from IStrategy"
+        if not candidates:
+            return False, "Missing required strategy class inheriting from IStrategy"
 
         required = {"populate_indicators", "populate_entry_trend", "populate_exit_trend"}
-        present = set()
-        for node in cls.body:
-            if isinstance(node, ast.FunctionDef):
-                present.add(node.name)
+        best_error = None
+        for cls in candidates:
+            present = set()
+            for node in cls.body:
+                if isinstance(node, ast.FunctionDef):
+                    present.add(node.name)
 
-        missing = sorted(list(required - present))
-        if missing:
-            return False, f"AIStrategy missing required methods: {', '.join(missing)}"
+            missing = sorted(list(required - present))
+            if not missing:
+                return True, ""
+            best_error = f"Strategy class {cls.name} missing required methods: {', '.join(missing)}"
 
-        return True, ""
+        return False, str(best_error or "No valid IStrategy class found")

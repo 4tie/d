@@ -194,6 +194,46 @@ class AIPerformanceStore:
                 results.append(d)
             return results
 
+    def get_recent_param_suggestions(self, limit: int = 200) -> Dict[str, List[str]]:
+        if not isinstance(limit, int) or limit < 1 or limit > 5000:
+            raise ValueError("limit must be an integer between 1 and 5000")
+
+        timeranges: List[str] = []
+        timeframes: List[str] = []
+        pairs: List[str] = []
+
+        def _add_unique(dst: List[str], v: str) -> None:
+            if not isinstance(v, str):
+                return
+            s = v.strip()
+            if not s:
+                return
+            if s not in dst:
+                dst.append(s)
+
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT ts, timerange, timeframe, pairs FROM strategy_runs ORDER BY ts DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+
+            for row in rows:
+                d = dict(row)
+                _add_unique(timeranges, str(d.get("timerange") or "").strip())
+                _add_unique(timeframes, str(d.get("timeframe") or "").strip())
+
+                p = str(d.get("pairs") or "").strip()
+                if p:
+                    for part in p.replace(";", ",").split(","):
+                        _add_unique(pairs, part)
+
+        return {
+            "timeranges": timeranges,
+            "timeframes": timeframes,
+            "pairs": pairs,
+        }
+
     def record_feedback(self, *, run_id: int, rating: int, comments: str | None = None) -> int:
         if not isinstance(run_id, int) or run_id <= 0:
             raise ValueError("run_id must be a positive integer")

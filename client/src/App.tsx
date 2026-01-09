@@ -1,53 +1,31 @@
-import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Dashboard from "@/pages/Dashboard";
-import AIStrategy from "@/pages/AIStrategy";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
-
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/ai-strategy" component={AIStrategy} />
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
+import { Route, Routes } from "react-router-dom";
+import { StrategyNavigator } from "./components/app-sidebar";
+import Overview from "./pages/Dashboard";
+import StrategyEditor from "./pages/AIStrategy";
+import Backtest from "./pages/Backtest";
+import Trades from "./pages/Trades";
+import AIAnalysis from "./pages/AIAnalysis";
+import History from "./pages/History";
+import Settings from "./pages/Settings";
+import NotFound from "./pages/NotFound";
 
 export default function App() {
-  const style = {
-    "--sidebar-width": "20rem",
-    "--sidebar-width-icon": "4rem",
-  };
-
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <SidebarProvider style={style as React.CSSProperties}>
-          <div className="flex h-screen w-full bg-background text-foreground dark">
-            <AppSidebar />
-            <div className="flex flex-col flex-1">
-              <header className="flex items-center justify-between p-4 border-b">
-                <div className="flex items-center gap-4">
-                  <SidebarTrigger data-testid="button-sidebar-toggle" />
-                  <h1 className="text-xl font-bold">SmartTrade AI</h1>
-                </div>
-                <ThemeToggle />
-              </header>
-              <main className="flex-1 overflow-auto p-6">
-                <Router />
-              </main>
-            </div>
-          </div>
-        </SidebarProvider>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <div className="h-screen w-screen bg-bg-950 text-fg-100 flex overflow-hidden">
+      <StrategyNavigator />
+      <main className="flex-1 min-w-0 overflow-auto p-4">
+        <Routes>
+          <Route path="/" element={<Backtest />} />
+          <Route path="/overview" element={<Overview />} />
+          <Route path="/backtest" element={<Backtest />} />
+          <Route path="/trades" element={<Trades />} />
+          <Route path="/ai-analysis" element={<AIAnalysis />} />
+          <Route path="/strategy-editor" element={<StrategyEditor />} />
+          <Route path="/history" element={<History />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </main>
+    </div>
   );
 }

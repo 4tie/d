@@ -13,6 +13,7 @@ __pycache__/
 /data/app.log
 /data/*.log
 /data/*.sqlite
+/data/*.sqlite-*
 /data/config.json
 /data/backtest_results/
 /data/tmp_backtest_strategies/
@@ -33,6 +34,16 @@ __pycache__/
 
 # Dev caches
 .pytest_cache/
+
+# Node / frontend
+node_modules/
+client/node_modules/
+client/dist/
+client/.vite/
+
+# Local
+.local/
+package-lock.json
 
 # IDE / assistant artifacts
 .vscode/

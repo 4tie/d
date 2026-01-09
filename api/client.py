@@ -42,7 +42,17 @@ class FreqtradeClient:
         if not (base.startswith("http://") or base.startswith("https://")):
             raise ValueError("Freqtrade URL must start with http:// or https://")
 
-        return base.rstrip("/") + path
+        base = base.rstrip("/")
+        p = path if isinstance(path, str) else ""
+        if not p.startswith("/"):
+            p = "/" + p
+
+        if base.endswith("/api/v1") and p.startswith("/api/v1/"):
+            return base + p[len("/api/v1"):]
+        if base.endswith("/api") and p.startswith("/api/"):
+            return base + p[len("/api"):]
+
+        return base + p
 
     def _set_connectivity(self, connected: bool) -> None:
         if self._connected is connected:
