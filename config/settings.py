@@ -9,6 +9,7 @@ _base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP_CONFIG_PATH = os.path.join(_base_dir, "data", "config.json")
 BOT_CONFIG_PATH = os.path.join(_base_dir, "userdata", "config.json")
 
+
 def load_app_config():
     """Load application configuration from data/config.json"""
     if not os.path.exists(APP_CONFIG_PATH):
@@ -31,7 +32,7 @@ def _default_app_config() -> dict:
             "directory": "./userdata/strategies",
         },
         "ui": {
-            "window_title": "SmartTrade AI Wrapper",
+            "window_title": "4tie",
             "window_geometry": [100, 100, 1000, 700],
             "update_interval": 5000,
         },
@@ -55,6 +56,7 @@ def _merge_defaults(cfg: dict) -> dict:
         else:
             out[k] = v
     return out
+
 
 # Load application configuration
 config = _merge_defaults(load_app_config())
@@ -85,14 +87,17 @@ API_USER = api_cfg.get("user")
 API_PASS = api_cfg.get("password")
 
 if not FREQTRADE_URL or not API_USER or not API_PASS:
-    APP_CONFIG_ERRORS.append("Missing api fields (freqtrade_url/user/password). Configure them in Settings.")
+    APP_CONFIG_ERRORS.append(
+        "Missing api fields (freqtrade_url/user/password). Configure them in Settings."
+    )
 
 # Strategy Configuration
 STRATEGY_DIR = strategy_cfg.get("directory")
 
 if not STRATEGY_DIR:
     STRATEGY_DIR = "./userdata/strategies"
-    APP_CONFIG_ERRORS.append("Missing strategy.directory. Using default ./userdata/strategies.")
+    APP_CONFIG_ERRORS.append(
+        "Missing strategy.directory. Using default ./userdata/strategies.")
 
 # UI Configuration
 WINDOW_TITLE = ui_cfg.get("window_title")
@@ -104,10 +109,12 @@ if not WINDOW_TITLE:
     APP_CONFIG_ERRORS.append("Missing ui.window_title. Using default.")
 if len(WINDOW_GEOMETRY) != 4:
     WINDOW_GEOMETRY = [100, 100, 1000, 700]
-    APP_CONFIG_ERRORS.append("Missing/invalid ui.window_geometry. Using default.")
+    APP_CONFIG_ERRORS.append(
+        "Missing/invalid ui.window_geometry. Using default.")
 if not isinstance(UPDATE_INTERVAL, int):
     UPDATE_INTERVAL = 5000
-    APP_CONFIG_ERRORS.append("Missing/invalid ui.update_interval. Using default.")
+    APP_CONFIG_ERRORS.append(
+        "Missing/invalid ui.update_interval. Using default.")
 
 # Ollama Configuration
 OLLAMA_BASE_URL = ollama_cfg.get("base_url", "http://localhost:11434")
@@ -118,11 +125,14 @@ if _task_models is None:
     _task_models = {}
 if not isinstance(_task_models, dict):
     _task_models = {}
-    APP_CONFIG_ERRORS.append("Invalid ollama.task_models (expected object). Ignoring.")
+    APP_CONFIG_ERRORS.append(
+        "Invalid ollama.task_models (expected object). Ignoring.")
 
 OLLAMA_TASK_MODELS = _task_models
-OLLAMA_MODEL_GENERATION = str(_task_models.get("strategy_generation") or OLLAMA_MODEL)
-OLLAMA_MODEL_ANALYSIS = str(_task_models.get("strategy_analysis") or OLLAMA_MODEL)
+OLLAMA_MODEL_GENERATION = str(
+    _task_models.get("strategy_generation") or OLLAMA_MODEL)
+OLLAMA_MODEL_ANALYSIS = str(
+    _task_models.get("strategy_analysis") or OLLAMA_MODEL)
 OLLAMA_MODEL_RISK = str(_task_models.get("risk_assessment") or OLLAMA_MODEL)
 OLLAMA_MODEL_CHAT = str(_task_models.get("chat") or OLLAMA_MODEL)
 
@@ -131,6 +141,7 @@ if OLLAMA_OPTIONS is None:
     OLLAMA_OPTIONS = {}
 if not isinstance(OLLAMA_OPTIONS, dict):
     OLLAMA_OPTIONS = {}
-    APP_CONFIG_ERRORS.append("Invalid ollama.options (expected object). Ignoring.")
+    APP_CONFIG_ERRORS.append(
+        "Invalid ollama.options (expected object). Ignoring.")
 
 APP_CONFIG_VALID = len(APP_CONFIG_ERRORS) == 0
