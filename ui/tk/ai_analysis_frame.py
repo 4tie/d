@@ -125,7 +125,8 @@ class AIAnalysisFrame(tk.Frame):
                     res = self.ollama_client.generate_text(prompt)
                 self.after(0, lambda: self._apply_results(res))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Error", str(e)))
+                error_msg = str(e)
+                self.after(0, lambda msg=error_msg: messagebox.showerror("Error", msg))
             finally:
                 self.after(0, lambda: self.btn_analyze.config(state="normal", text="Analyze Strategy"))
         
@@ -153,7 +154,8 @@ class AIAnalysisFrame(tk.Frame):
                 trades = self.client.get_trades()
                 self.after(0, lambda: messagebox.showinfo("Trades", f"Fetched {len(trades)} trades"))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Error", str(e)))
+                error_msg = str(e)
+                self.after(0, lambda msg=error_msg: messagebox.showerror("Error", msg))
         threading.Thread(target=_task, daemon=True).start()
 
     def on_analyze_losses(self):
@@ -171,7 +173,8 @@ class AIAnalysisFrame(tk.Frame):
                 res = self.ollama_client.generate_text(prompt)
                 self.after(0, lambda: self._apply_loss_results(res))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Error", str(e)))
+                error_msg = str(e)
+                self.after(0, lambda msg=error_msg: messagebox.showerror("Error", msg))
         threading.Thread(target=_task, daemon=True).start()
 
     def _apply_loss_results(self, text):

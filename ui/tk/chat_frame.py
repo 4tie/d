@@ -41,6 +41,16 @@ class ChatFrame(tk.Frame):
         input_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
         input_frame.columnconfigure(0, weight=1)
         
+        btn_action_frame = tk.Frame(input_frame, bg=self.bg_color)
+        btn_action_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 5))
+        
+        self.btn_include = tk.Button(
+            btn_action_frame, text="Include Last Results", command=self.include_last_results,
+            bg="#5c6bc0", fg="white", font=("Segoe UI", 9),
+            relief="flat", padx=10
+        )
+        self.btn_include.pack(side="left")
+        
         self.input_entry = tk.Entry(
             input_frame, bg="#1e1e1e", fg="#ffffff",
             insertbackground="white", font=("Segoe UI", 10),
@@ -109,6 +119,24 @@ class ChatFrame(tk.Frame):
                 self.after(0, lambda: self._set_running(False))
                 
         threading.Thread(target=_task, daemon=True).start()
+
+    def include_last_results(self):
+        strategy = getattr(self.main_app, 'last_backtest_strategy', None)
+        results = getattr(self.main_app, 'last_backtest_results', None)
+        
+        if not strategy:
+            self._append_message("system", "No recent backtest found to include.")
+            return
+            
+        context = f"\n\n[CONTEXT: Last Backtest Results]\n"
+        if isinstance(results, dict):
+            context += f"Strategy: {results.get('strategy_class')}\n"
+            context += f"Stats: {results.get('stdout', '')[:500]}...\n"
+        
+        context += f"\n[STRATEGY CODE]\n{strategy}\n"
+        
+        self.input_entry.insert(tk.END, "Analyze this strategy and results: " + context)
+        self._append_message("system", "Included strategy and backtest results in input.")
 
     def _set_running(self, running):
         self._running = running
