@@ -544,6 +544,21 @@ class BacktestTab(QWidget):
             }
             self.txt_raw.setText(json.dumps(raw_payload, indent=2, ensure_ascii=False))
 
+            # Auto-load into AI Analysis tab
+            try:
+                main_window = self.window()
+                from PyQt6.QtWidgets import QTabWidget
+                tabs = main_window.findChild(QTabWidget)
+                if tabs:
+                    for i in range(tabs.count()):
+                        if tabs.tabText(i) == "AI Analysis":
+                            analysis_tab = tabs.widget(i)
+                            if hasattr(analysis_tab, "on_load_last_backtest"):
+                                analysis_tab.on_load_last_backtest()
+                            break
+            except Exception:
+                pass
+
         def _on_error(msg: str):
             self.txt_summary.setText(f"Backtest failed: {msg}")
 
