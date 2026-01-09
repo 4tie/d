@@ -281,7 +281,24 @@ class BacktestFrame(tk.Frame):
             return
             
         # Store for analysis frame
-        self.master.master.master.last_backtest_strategy = code
+        try:
+            # Safely navigate to the main app instance to store the strategy
+            # In our setup, BacktestFrame is a child of a container, which is a child of the Notebook (tabs)
+            # The Notebook is a child of the main application container.
+            # We use a more robust way to find the main app or store the data.
+            main_app = getattr(self, 'main_app', None)
+            if not main_app:
+                # Fallback: try to find it via parents if not explicitly passed
+                p = self.master
+                while p and not hasattr(p, 'last_backtest_strategy'):
+                    p = p.master
+                if p: main_app = p
+            
+            if main_app:
+                main_app.last_backtest_strategy = code
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not store last backtest strategy: {e}")
 
         self.btn_run.config(state="disabled", text="Running...")
         self.txt_results.config(state="normal")
@@ -306,7 +323,20 @@ class BacktestFrame(tk.Frame):
                     pairs=self.pairs_var.get()
                 )
                 # Store results for analysis frame
-                self.master.master.master.last_backtest_results = res
+                try:
+                    main_app = getattr(self, 'main_app', None)
+                    if not main_app:
+                        p = self.master
+                        while p and not hasattr(p, 'last_backtest_results'):
+                            p = p.master
+                        if p: main_app = p
+                    
+                    if main_app:
+                        main_app.last_backtest_results = res
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Could not store last backtest results: {e}")
+
                 self.after(0, lambda: self._apply_results(res))
                 
                 # Auto-load into analysis frame

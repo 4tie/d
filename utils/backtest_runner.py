@@ -504,8 +504,20 @@ def download_data(
 ) -> Dict[str, Any]:
     root = _project_root()
 
+    # Detect which python command to use. In Replit, 'python3' is often more reliable than sys.executable
+    # for invoking module-based CLIs that might be installed in site-packages.
+    python_cmd = sys.executable
+    for p in ["python3", "python"]:
+        try:
+            # Check if freqtrade is available as a module for this command
+            subprocess.run([p, "-m", "freqtrade", "--version"], capture_output=True, check=True)
+            python_cmd = p
+            break
+        except:
+            continue
+
     cmd = [
-        sys.executable,
+        python_cmd,
         "-m",
         "freqtrade",
         "download-data",
@@ -588,8 +600,18 @@ def run_backtest(
             f.write(strategy_code)
         strategy_file_temp = strategy_file
 
+        # Use detected python command
+        python_cmd = sys.executable
+        for p in ["python3", "python"]:
+            try:
+                subprocess.run([p, "-m", "freqtrade", "--version"], capture_output=True, check=True)
+                python_cmd = p
+                break
+            except:
+                continue
+
         cmd = [
-            sys.executable,
+            python_cmd,
             "-m",
             "freqtrade",
             "backtesting",
