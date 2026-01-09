@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext, filedialog
+from tkinter import ttk, messagebox, scrolledtext, filedialog, simpledialog
 import threading
 import sys
 import os
@@ -12,6 +12,51 @@ sys.path.insert(0, os.path.abspath(os.curdir))
 
 from utils.backtest_runner import run_backtest, download_data
 from config.settings import BOT_CONFIG_PATH, APP_CONFIG_PATH, load_app_config
+
+class CustomTimerangeDialog(tk.Toplevel):
+    def __init__(self, parent, initial_tr="", bg_color="#0f172a", fg_color="#f1f5f9", accent_color="#3b82f6"):
+        super().__init__(parent)
+        self.title("Select Custom Timerange")
+        self.configure(bg=bg_color)
+        self.transient(parent)
+        self.grab_set()
+        self.result = None
+        
+        container = tk.Frame(self, bg=bg_color, padx=20, pady=20)
+        container.pack()
+        
+        tk.Label(container, text="Start Date (YYYYMMDD):", bg=bg_color, fg=fg_color).grid(row=0, column=0, sticky="w", pady=5)
+        self.start_entry = tk.Entry(container, bg="#1e293b", fg=fg_color, insertbackground=fg_color)
+        self.start_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        tk.Label(container, text="End Date (YYYYMMDD):", bg=bg_color, fg=fg_color).grid(row=1, column=0, sticky="w", pady=5)
+        self.end_entry = tk.Entry(container, bg="#1e293b", fg=fg_color, insertbackground=fg_color)
+        self.end_entry.grid(row=1, column=1, padx=5, pady=5)
+        
+        # Parse initial_tr if valid
+        if initial_tr and re.match(r"^\d{8}-\d{8}$", initial_tr):
+            s, e = initial_tr.split("-")
+            self.start_entry.insert(0, s)
+            self.end_entry.insert(0, e)
+        else:
+            today = date.today()
+            self.start_entry.insert(0, (today - timedelta(days=30)).strftime("%Y%m%d"))
+            self.end_entry.insert(0, today.strftime("%Y%m%d"))
+            
+        btn_frame = tk.Frame(container, bg=bg_color)
+        btn_frame.grid(row=2, column=0, columnspan=2, pady=15)
+        
+        tk.Button(btn_frame, text="Apply", command=self.on_apply, bg=accent_color, fg="white", padx=10).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Cancel", command=self.destroy, bg="#4b5563", fg="white", padx=10).pack(side="left", padx=5)
+
+    def on_apply(self):
+        s = self.start_entry.get().strip()
+        e = self.end_entry.get().strip()
+        if not re.match(r"^\d{8}$", s) or not re.match(r"^\d{8}$", e):
+            messagebox.showerror("Error", "Dates must be in YYYYMMDD format")
+            return
+        self.result = f"{s}-{e}"
+        self.destroy()
 
 class BacktestFrame(tk.Frame):
     def __init__(self, parent, bg_color, fg_color, accent_color):
@@ -34,7 +79,7 @@ class BacktestFrame(tk.Frame):
         ctrl_group = tk.LabelFrame(container, text="Configuration", bg=self.bg_color, fg=self.fg_color)
         ctrl_group.pack(fill="x", pady=5)
         
-        # Row 1: Timeframe and Stake Amount
+        # Row 1: Timeframe and Wallet Balance
         row1 = tk.Frame(ctrl_group, bg=self.bg_color)
         row1.pack(fill="x", padx=5, pady=2)
 
@@ -44,11 +89,11 @@ class BacktestFrame(tk.Frame):
         self.tf_combo.pack(side="left", padx=5)
         self.tf_combo.bind("<<ComboboxSelected>>", self._schedule_save_prefs)
 
-        tk.Label(row1, text="Stake Amount:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
-        self.stake_var = tk.StringVar(value="100.0")
-        self.stake_entry = tk.Entry(row1, textvariable=self.stake_var, width=10, bg="#1e293b", fg=self.fg_color, insertbackground=self.fg_color)
-        self.stake_entry.pack(side="left", padx=5)
-        self.stake_entry.bind("<FocusOut>", self._schedule_save_prefs)
+        tk.Label(row1, text="Wallet Balance:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
+        self.balance_var = tk.StringVar(value="1000.0")
+        self.balance_entry = tk.Entry(row1, textvariable=self.balance_var, width=12, bg="#1e293b", fg=self.fg_color, insertbackground=self.fg_color)
+        self.balance_entry.pack(side="left", padx=5)
+        self.balance_entry.bind("<FocusOut>", self._schedule_save_prefs)
 
         # Row 2: Timerange Selection
         row2 = tk.Frame(ctrl_group, bg=self.bg_color)
@@ -62,6 +107,9 @@ class BacktestFrame(tk.Frame):
         self.tr_combo.bind("<<ComboboxSelected>>", self._schedule_save_prefs)
         self.tr_combo.bind("<FocusOut>", self._schedule_save_prefs)
         
+        self.btn_tr_custom = tk.Button(row2, text="Custom...", command=self.on_custom_tr, bg="#4b5563", fg="white", relief="flat", padx=5)
+        self.btn_tr_custom.pack(side="left", padx=5)
+
         # Row 3: Pairs Selection
         row3 = tk.Frame(ctrl_group, bg=self.bg_color)
         row3.pack(fill="x", padx=5, pady=2)
@@ -97,6 +145,17 @@ class BacktestFrame(tk.Frame):
         tk.Label(container, text="Results Summary:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w", padx=5)
         self.txt_results = scrolledtext.ScrolledText(container, bg="#1e293b", fg=self.fg_color, state="disabled", height=12)
         self.txt_results.pack(fill="both", expand=True, padx=5, pady=5)
+
+    def on_custom_tr(self):
+        current = self.tr_var.get()
+        match = re.search(r"(\d{8}-\d{8})", current)
+        initial = match.group(1) if match else ""
+        
+        dlg = CustomTimerangeDialog(self, initial, self.bg_color, self.fg_color, self.accent_color)
+        self.wait_window(dlg)
+        if dlg.result:
+            self.tr_var.set(dlg.result)
+            self._schedule_save_prefs()
 
     def _add_tr_presets(self):
         today = date.today()
@@ -143,8 +202,12 @@ class BacktestFrame(tk.Frame):
                 cfg = json.load(f)
             if 'timeframe' in cfg:
                 self.tf_var.set(cfg['timeframe'])
-            if 'stake_amount' in cfg:
-                self.stake_var.set(str(cfg['stake_amount']))
+            if 'available_capital' in cfg:
+                self.balance_var.set(str(cfg['available_capital']))
+            elif 'stake_amount' in cfg:
+                # Fallback to stake amount if capital not explicitly defined
+                self.balance_var.set(str(cfg['stake_amount']))
+
             whitelist = cfg.get('exchange', {}).get('pair_whitelist', [])
             if whitelist:
                 self._known_pairs = whitelist
@@ -159,7 +222,7 @@ class BacktestFrame(tk.Frame):
             cfg = load_app_config()
             bt = cfg.get('backtest', {})
             if bt.get('timeframe'): self.tf_var.set(bt['timeframe'])
-            if bt.get('stake_amount'): self.stake_var.set(str(bt['stake_amount']))
+            if bt.get('wallet_balance'): self.balance_var.set(str(bt['wallet_balance']))
             if bt.get('pairs'): self.pairs_var.set(bt['pairs'])
             if bt.get('timerange'): self.tr_var.set(bt['timerange'])
         except: pass
@@ -170,7 +233,7 @@ class BacktestFrame(tk.Frame):
                 cfg = load_app_config()
                 if 'backtest' not in cfg: cfg['backtest'] = {}
                 cfg['backtest']['timeframe'] = self.tf_var.get()
-                cfg['backtest']['stake_amount'] = self.stake_var.get()
+                cfg['backtest']['wallet_balance'] = self.balance_var.get()
                 cfg['backtest']['pairs'] = self.pairs_var.get()
                 
                 tr_val = self.tr_var.get()
@@ -227,6 +290,9 @@ class BacktestFrame(tk.Frame):
 
         def _task():
             try:
+                # We can inject wallet balance into the backtest call if needed, 
+                # but currently run_backtest uses BOT_CONFIG_PATH. 
+                # We use the UI balance as an override preference.
                 res = run_backtest(
                     strategy_code=code, 
                     config_path=BOT_CONFIG_PATH, 
