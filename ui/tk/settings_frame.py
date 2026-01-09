@@ -112,7 +112,8 @@ class SettingsFrame(tk.Frame):
                 if models:
                     self.after(0, lambda: self._update_model_lists(models))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Error", f"Failed to fetch models: {e}"))
+                # Capture 'e' in the lambda scope by using it as a default argument
+                self.after(0, lambda e=e: messagebox.showerror("Error", f"Failed to fetch models: {e}"))
         threading.Thread(target=_task, daemon=True).start()
 
     def _update_model_lists(self, models):
