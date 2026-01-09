@@ -79,7 +79,7 @@ class BacktestFrame(tk.Frame):
         ctrl_group = tk.LabelFrame(container, text="Configuration", bg=self.bg_color, fg=self.fg_color)
         ctrl_group.pack(fill="x", pady=5)
         
-        # Row 1: Timeframe and Wallet Balance
+        # Row 1: Timeframe and Dry Run Wallet
         row1 = tk.Frame(ctrl_group, bg=self.bg_color)
         row1.pack(fill="x", padx=5, pady=2)
 
@@ -89,7 +89,7 @@ class BacktestFrame(tk.Frame):
         self.tf_combo.pack(side="left", padx=5)
         self.tf_combo.bind("<<ComboboxSelected>>", self._schedule_save_prefs)
 
-        tk.Label(row1, text="Wallet Balance:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
+        tk.Label(row1, text="Dry Run Wallet:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
         self.balance_var = tk.StringVar(value="1000.0")
         self.balance_entry = tk.Entry(row1, textvariable=self.balance_var, width=12, bg="#1e293b", fg=self.fg_color, insertbackground=self.fg_color)
         self.balance_entry.pack(side="left", padx=5)
@@ -222,7 +222,8 @@ class BacktestFrame(tk.Frame):
             cfg = load_app_config()
             bt = cfg.get('backtest', {})
             if bt.get('timeframe'): self.tf_var.set(bt['timeframe'])
-            if bt.get('wallet_balance'): self.balance_var.set(str(bt['wallet_balance']))
+            if bt.get('dry_run_wallet'): self.balance_var.set(str(bt['dry_run_wallet']))
+            elif bt.get('wallet_balance'): self.balance_var.set(str(bt['wallet_balance']))
             if bt.get('pairs'): self.pairs_var.set(bt['pairs'])
             if bt.get('timerange'): self.tr_var.set(bt['timerange'])
         except: pass
@@ -233,7 +234,7 @@ class BacktestFrame(tk.Frame):
                 cfg = load_app_config()
                 if 'backtest' not in cfg: cfg['backtest'] = {}
                 cfg['backtest']['timeframe'] = self.tf_var.get()
-                cfg['backtest']['wallet_balance'] = self.balance_var.get()
+                cfg['backtest']['dry_run_wallet'] = self.balance_var.get()
                 cfg['backtest']['pairs'] = self.pairs_var.get()
                 
                 tr_val = self.tr_var.get()
