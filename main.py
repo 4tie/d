@@ -25,7 +25,6 @@ try:
     from api.client import FreqtradeClient
     from ui.dashboard_tab import DashboardTab
     from ui.ai_builder_tab import AIBuilderTab
-    from ui.ai_analysis_tab import AIAnalysisTab
     from ui.bot_control_tab import BotControlTab
     from ui.settings_tab import SettingsTab
     from ui.backtest_tab import BacktestTab
@@ -143,7 +142,6 @@ class SmartBotApp(QMainWindow):
         tab_creators = [
             (self.create_dashboard_tab, "Dashboard"),
             (self.create_ai_builder_tab, "AI Builder"),
-            (self.create_ai_analysis_tab, "AI Analysis"),
             (self.create_bot_control_tab, "Control"),
             (self.create_settings_tab, "Settings"),
             (self.create_backtest_tab, "Backtest")
@@ -167,10 +165,6 @@ class SmartBotApp(QMainWindow):
         self.ai_builder_tab = AIBuilderTab(main_app=self)
         self.tabs.addTab(self.ai_builder_tab, "AI Builder")
 
-    def create_ai_analysis_tab(self):
-        self.ai_analysis_tab = AIAnalysisTab(self.client, self.threadpool)
-        self.tabs.addTab(self.ai_analysis_tab, "AI Analysis")
-
     def create_bot_control_tab(self):
         self.bot_control_tab = BotControlTab(self.client, self.threadpool)
         self.tabs.addTab(self.bot_control_tab, "Control")
@@ -187,9 +181,6 @@ class SmartBotApp(QMainWindow):
         try:
             self.client.update_settings(base_url=freqtrade_url, username=api_user, password=api_pass)
             self.strategy_service.update_ollama_settings(base_url=ollama_url, model=ollama_model, options=ollama_options, task_models=ollama_task_models)
-
-            if hasattr(self, 'ai_analysis_tab'):
-                self.ai_analysis_tab.update_ollama_settings(base_url=ollama_url, model=ollama_model, options=ollama_options, task_models=ollama_task_models)
 
             if hasattr(self, 'chat_dock'):
                 self.chat_dock.update_ollama_settings(base_url=ollama_url, model=ollama_model, options=ollama_options, task_models=ollama_task_models)

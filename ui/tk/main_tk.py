@@ -17,7 +17,6 @@ try:
     from utils.logging_setup import setup_logging
     from ui.tk.bot_control_frame import BotControlFrame
     from ui.tk.ai_builder_frame import AIBuilderFrame
-    from ui.tk.ai_analysis_frame import AIAnalysisFrame
     from ui.tk.backtest_frame import BacktestFrame
     from ui.tk.chat_frame import ChatFrame
     from ui.tk.settings_frame import SettingsFrame
@@ -35,6 +34,7 @@ class SmartBotAppTK:
         self.bg_color = "#0f172a"
         self.fg_color = "#f1f5f9"
         self.accent_color = "#3b82f6"
+        self.surface_color = "#1e293b"
         self.root.configure(bg=self.bg_color)
         
         # Initialize services
@@ -49,16 +49,18 @@ class SmartBotAppTK:
         style = ttk.Style()
         style.theme_use('clam')
         style.configure("TNotebook", background=self.bg_color, borderwidth=0)
-        style.configure("TNotebook.Tab", background="#1e293b", foreground="#94a3b8", padding=[10, 5])
-        style.map("TNotebook.Tab", background=[("selected", "#334155")], foreground=[("selected", "#ffffff")])
+        style.configure("TNotebook.Tab", background=self.surface_color, foreground="#94a3b8", padding=[12, 6], font=("Segoe UI", 10))
+        style.map("TNotebook.Tab", 
+                 background=[("selected", "#334155")], 
+                 foreground=[("selected", "#ffffff")],
+                 font=[("selected", ("Segoe UI", 10, "bold"))])
         
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(expand=True, fill="both", padx=10, pady=10)
+        self.notebook.pack(expand=True, fill="both", padx=15, pady=15)
         
         # Create Tabs
         self.dashboard_frame = tk.Frame(self.notebook, bg=self.bg_color)
         self.builder_frame = AIBuilderFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
-        self.analysis_frame = AIAnalysisFrame(self.notebook, self.client, self.strategy_service, self.bg_color, self.fg_color, self.accent_color)
         self.control_frame = BotControlFrame(self.notebook, self.client, self.strategy_service, self.bg_color, self.fg_color, self.accent_color)
         self.backtest_frame = BacktestFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
         self.chat_frame = ChatFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
@@ -66,7 +68,6 @@ class SmartBotAppTK:
         
         self.notebook.add(self.dashboard_frame, text="Dashboard")
         self.notebook.add(self.builder_frame, text="AI Builder")
-        self.notebook.add(self.analysis_frame, text="AI Analysis")
         self.notebook.add(self.control_frame, text="Control")
         self.notebook.add(self.backtest_frame, text="Backtest")
         self.notebook.add(self.chat_frame, text="AI Chat")
@@ -76,29 +77,29 @@ class SmartBotAppTK:
         self.setup_status_bar()
 
     def setup_dashboard(self):
-        lbl_title = tk.Label(self.dashboard_frame, text="Bot Status", font=("Arial", 18, "bold"), 
+        lbl_title = tk.Label(self.dashboard_frame, text="Bot Status", font=("Segoe UI", 20, "bold"), 
                            bg=self.bg_color, fg=self.fg_color)
-        lbl_title.pack(pady=20)
+        lbl_title.pack(pady=(40, 20))
         
         self.status_var = tk.StringVar(value="Checking...")
         self.lbl_status = tk.Label(self.dashboard_frame, textvariable=self.status_var, 
-                                 bg=self.bg_color, fg=self.accent_color, font=("Arial", 14))
+                                 bg=self.bg_color, fg=self.accent_color, font=("Segoe UI", 16))
         self.lbl_status.pack()
         
         self.profit_var = tk.StringVar(value="Profit: ---")
         self.lbl_profit = tk.Label(self.dashboard_frame, textvariable=self.profit_var, 
-                                 bg=self.bg_color, fg="#22c55e", font=("Arial", 14))
-        self.lbl_profit.pack(pady=10)
+                                 bg=self.bg_color, fg="#22c55e", font=("Segoe UI", 16, "bold"))
+        self.lbl_profit.pack(pady=20)
         
         btn_refresh = tk.Button(self.dashboard_frame, text="Refresh Data", command=self.update_stats,
-                              bg=self.accent_color, fg="white", font=("Arial", 10, "bold"),
-                              relief="flat", padx=20, pady=10)
-        btn_refresh.pack(pady=20)
+                              bg=self.accent_color, fg="white", font=("Segoe UI", 11, "bold"),
+                              relief="flat", padx=30, pady=12, cursor="hand2")
+        btn_refresh.pack(pady=30)
 
     def setup_status_bar(self):
         self.status_bar_var = tk.StringVar(value="Initializing...")
-        status_bar = tk.Label(self.root, textvariable=self.status_bar_var, bd=1, relief="sunken", anchor="w",
-                            bg="#1e293b", fg="#94a3b8")
+        status_bar = tk.Label(self.root, textvariable=self.status_bar_var, bd=0, relief="flat", anchor="w",
+                            bg=self.surface_color, fg="#94a3b8", font=("Segoe UI", 9), padx=10, pady=5)
         status_bar.pack(side="bottom", fill="x")
 
     def update_stats(self):
