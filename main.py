@@ -24,7 +24,7 @@ try:
                                WINDOW_TITLE, WINDOW_GEOMETRY, UPDATE_INTERVAL, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_OPTIONS, OLLAMA_TASK_MODELS)
     from api.client import FreqtradeClient
     from ui.dashboard_tab import DashboardTab
-    from ui.ai_builder_tab import AIBuilderTab
+    from ui.comparing_tab import ComparingTab
     from ui.ai_analysis_tab import AIAnalysisTab
     from ui.bot_control_tab import BotControlTab
     from ui.settings_tab import SettingsTab
@@ -142,7 +142,7 @@ class SmartBotApp(QMainWindow):
     def _init_tabs(self):
         tab_creators = [
             (self.create_dashboard_tab, "Dashboard"),
-            (self.create_ai_builder_tab, "AI Builder"),
+            (self.create_comparing_tab, "Comparing"),
             (self.create_ai_analysis_tab, "AI Analysis"),
             (self.create_bot_control_tab, "Control"),
             (self.create_settings_tab, "Settings"),
@@ -163,9 +163,9 @@ class SmartBotApp(QMainWindow):
         self.dashboard_tab = DashboardTab(self.client, self.threadpool)
         self.tabs.addTab(self.dashboard_tab, "Dashboard")
 
-    def create_ai_builder_tab(self):
-        self.ai_builder_tab = AIBuilderTab(main_app=self)
-        self.tabs.addTab(self.ai_builder_tab, "AI Builder")
+    def create_comparing_tab(self):
+        self.comparing_tab = ComparingTab(main_app=self)
+        self.tabs.addTab(self.comparing_tab, "Comparing")
 
     def create_ai_analysis_tab(self):
         self.ai_analysis_tab = AIAnalysisTab(self.client, self.threadpool)
