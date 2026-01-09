@@ -138,6 +138,12 @@ class BacktestFrame(tk.Frame):
                                 bg="#4b5563", fg="white", relief="flat", padx=10)
         self.btn_load.pack(side="left", padx=5)
         
+        # Candle Completeness Widget
+        self.lbl_candle = tk.Label(container, text="Data Metadata: Not Checked", 
+                                  bg="#1e293b", fg="#94a3b8", font=("Arial", 10, "bold"),
+                                  padx=10, pady=5, relief="solid", bd=1)
+        self.lbl_candle.pack(fill="x", padx=5, pady=5)
+        
         # Code and Results
         tk.Label(container, text="Strategy Code:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w", padx=5)
         self.txt_code = scrolledtext.ScrolledText(container, height=10, bg="#1e293b", fg=self.fg_color, insertbackground=self.fg_color)
@@ -274,6 +280,7 @@ class BacktestFrame(tk.Frame):
         def _task():
             try:
                 download_data(BOT_CONFIG_PATH, timerange, self.tf_var.get(), self.pairs_var.get())
+                self.after(0, lambda: self.lbl_candle.config(text=f"Data Metadata: Downloaded {timerange or 'Full'}", fg="#3b82f6", bg="#172554"))
                 self.after(0, lambda: messagebox.showinfo("Success", "Data download complete"))
             except Exception as e:
                 error_msg = str(e)
@@ -353,6 +360,13 @@ class BacktestFrame(tk.Frame):
         self.txt_results.delete("1.0", "end")
         
         if isinstance(res, dict):
+            # Update Metadata Widget
+            meta = res.get('data', {}).get('metadata', {})
+            if meta:
+                tr = meta.get('timerange', 'Unknown')
+                self.lbl_candle.config(text=f"Data Metadata: Timerange {tr} | Status: Success", 
+                                      fg="#22c55e", bg="#064e3b")
+            
             self.txt_results.insert("end", f"=== Backtest Results ===\n", "header")
             self.txt_results.insert("end", f"Strategy: {res.get('strategy_class')}\n", "info")
             

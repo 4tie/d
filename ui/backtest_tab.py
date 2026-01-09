@@ -86,6 +86,11 @@ class BacktestTab(QWidget):
         self.lbl_status = QLabel(f"Config: {BOT_CONFIG_PATH}")
         layout.addWidget(self.lbl_status)
 
+        # Data Metadata Widget
+        self.lbl_candle_completeness = QLabel("Data Metadata: Not Checked")
+        self.lbl_candle_completeness.setStyleSheet("font-weight: bold; color: #94a3b8; padding: 5px; border: 1px solid #334155; border-radius: 4px; background-color: #1e293b;")
+        layout.addWidget(self.lbl_candle_completeness)
+
         self.txt_strategy = QTextEdit()
         self.txt_strategy.setPlaceholderText("Paste strategy code here (must include a class inheriting from IStrategy)...")
         self.txt_strategy.setMinimumHeight(180)
@@ -532,6 +537,13 @@ class BacktestTab(QWidget):
                 for key in ["strategy", "strategy_comparison", "results", "backtest", "metadata"]:
                     if key in data:
                         summary_lines.append(f"Contains: {key}")
+                
+                # Update Candle Completeness from metadata
+                meta = data.get('metadata', {})
+                if meta:
+                    timerange = meta.get('timerange', 'Unknown')
+                    self.lbl_candle_completeness.setText(f"Data Metadata: Timerange {timerange} | Status: Success")
+                    self.lbl_candle_completeness.setStyleSheet("font-weight: bold; color: #22c55e; padding: 5px; border: 1px solid #22c55e; border-radius: 4px; background-color: #064e3b;")
 
             self.txt_summary.setText("\n".join(summary_lines))
 
@@ -570,23 +582,10 @@ class BacktestTab(QWidget):
             except Exception:
                 pass
 
-            # Auto-load into AI Analysis tab
-            try:
-                main_window = self.window()
-                from PyQt6.QtWidgets import QTabWidget
-                tabs = main_window.findChild(QTabWidget)
-                if tabs:
-                    for i in range(tabs.count()):
-                        if tabs.tabText(i) == "AI Analysis":
-                            analysis_tab = tabs.widget(i)
-                            if hasattr(analysis_tab, "on_load_last_backtest"):
-                                analysis_tab.on_load_last_backtest()
-                            break
-            except Exception:
-                pass
-
         def _on_error(msg: str):
-            self.txt_summary.setText(f"Backtest failed: {msg}")
+            self.txt_summary.setText(f"Backtest failed:\n{msg}")
+            self.lbl_candle_completeness.setText(f"Data Metadata: Error - {msg[:50]}...")
+            self.lbl_candle_completeness.setStyleSheet("font-weight: bold; color: #ef4444; padding: 5px; border: 1px solid #ef4444; border-radius: 4px; background-color: #450a0a;")
 
         def _on_finished():
             self._set_running(False)
@@ -600,25 +599,36 @@ class BacktestTab(QWidget):
         if self._running:
             return
 
-        timerange = self._get_current_timerange_value().strip() or None
-        timeframe = self._get_current_timeframe_value().strip() or None
-        pairs = self._get_current_pairs_value().strip() or None
+        timerange_data = self.timerange_combo.currentData()
+        if isinstance(timerange_data, str) and timerange_data.strip():
+            timerange = timerange_data.strip()
+        else:
+            timerange_text = self.timerange_combo.currentText().strip()
+            timerange = self._extract_timerange(timerange_text) if timerange_text else None
+
+        timeframe = self.timeframe_combo.currentText().strip() or "5m"
+
+        pairs_data = self.pairs_combo.currentData()
+        if isinstance(pairs_data, str) and pairs_data.strip():
+            pairs = pairs_data.strip()
+        else:
+            pairs_text = self.pairs_combo.currentText().strip()
+            pairs = pairs_text if pairs_text and not pairs_text.startswith('(') else None
 
         self._set_running(True)
-        self.txt_summary.setText("Downloading data... (this may take a while)")
-        self.txt_raw.setText("")
+        self.txt_summary.setText("Downloading historical data... (this may take a while)")
 
         worker = Worker(download_data, BOT_CONFIG_PATH, timerange, timeframe, pairs)
 
-        def _on_result(result: dict):
-            if not isinstance(result, dict):
-                QMessageBox.critical(self, "Error", "Unexpected download result format")
-                return
-            self.txt_summary.setText("Data download completed.")
-            self.txt_raw.setText(json.dumps(result, indent=2, ensure_ascii=False))
+        def _on_result(_res):
+            self.txt_summary.setText("Data download complete.")
+            self.lbl_candle_completeness.setText(f"Data Metadata: Downloaded {timerange or 'Full'} | {timeframe}")
+            self.lbl_candle_completeness.setStyleSheet("font-weight: bold; color: #3b82f6; padding: 5px; border: 1px solid #3b82f6; border-radius: 4px; background-color: #172554;")
 
         def _on_error(msg: str):
-            self.txt_summary.setText(f"Data download failed: {msg}")
+            self.txt_summary.setText(f"Download failed:\n{msg}")
+            self.lbl_candle_completeness.setText("Data Metadata: Download Failed")
+            self.lbl_candle_completeness.setStyleSheet("font-weight: bold; color: #ef4444; padding: 5px; border: 1px solid #ef4444; border-radius: 4px; background-color: #450a0a;")
 
         def _on_finished():
             self._set_running(False)

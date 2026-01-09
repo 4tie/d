@@ -5,7 +5,9 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
                              QTableWidget, QTableWidgetItem, QHeaderView, QMessageBox,
                              QTextEdit, QSplitter)
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor
 import logging
+import difflib
 
 class ComparingTab(QWidget):
     """Comparing tab for strategy outcomes and restoration"""
@@ -32,12 +34,22 @@ class ComparingTab(QWidget):
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         splitter.addWidget(self.table)
         
-        # Code preview
-        self.code_preview = QTextEdit()
-        self.code_preview.setReadOnly(True)
-        self.code_preview.setPlaceholderText("Select a result to see the strategy code...")
-        splitter.addWidget(self.code_preview)
+        # Diff View Container
+        diff_container = QWidget()
+        diff_layout = QVBoxLayout(diff_container)
+        diff_layout.setContentsMargins(0, 0, 0, 0)
         
+        diff_header = QLabel("Visual Diff (Current AIStrategy.py vs Selected)")
+        diff_header.setStyleSheet("font-weight: bold; color: #94a3b8; margin-top: 5px;")
+        diff_layout.addWidget(diff_header)
+        
+        self.diff_view = QTextEdit()
+        self.diff_view.setReadOnly(True)
+        self.diff_view.setPlaceholderText("Select a result to see the visual diff...")
+        self.diff_view.setFontFamily("Courier New")
+        diff_layout.addWidget(self.diff_view)
+        
+        splitter.addWidget(diff_container)
         layout.addWidget(splitter)
         
         # Actions
@@ -91,7 +103,7 @@ class ComparingTab(QWidget):
         selected = self.table.selectedItems()
         if not selected:
             self.btn_restore.setEnabled(False)
-            self.code_preview.clear()
+            self.diff_view.clear()
             return
             
         row = selected[0].row()
@@ -99,8 +111,44 @@ class ComparingTab(QWidget):
         run = self.results_data.get(run_id)
         
         if run:
-            self.code_preview.setPlainText(run.get("strategy_code", ""))
             self.btn_restore.setEnabled(True)
+            self._show_diff(run.get("strategy_code", ""))
+
+    def _show_diff(self, new_code):
+        self.diff_view.clear()
+        
+        current_code = ""
+        path = "user_data/strategies/AIStrategy.py"
+        if os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    current_code = f.read()
+            except Exception:
+                pass
+        
+        diff = difflib.ndiff(current_code.splitlines(), new_code.splitlines())
+        
+        for line in diff:
+            fmt = QTextCharFormat()
+            if line.startswith('+'):
+                fmt.setBackground(QColor("#166534")) # Dark green
+                fmt.setForeground(QColor("#f1f5f9"))
+                self._append_diff_line(line, fmt)
+            elif line.startswith('-'):
+                fmt.setBackground(QColor("#991b1b")) # Dark red
+                fmt.setForeground(QColor("#f1f5f9"))
+                self._append_diff_line(line, fmt)
+            elif line.startswith('?'):
+                continue
+            else:
+                fmt.setForeground(QColor("#94a3b8"))
+                self._append_diff_line(line, fmt)
+
+    def _append_diff_line(self, text, char_format):
+        cursor = self.diff_view.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.setCharFormat(char_format)
+        cursor.insertText(text + "\n")
 
     def on_restore_clicked(self):
         selected = self.table.selectedItems()

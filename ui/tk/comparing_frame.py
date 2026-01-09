@@ -4,6 +4,7 @@ import threading
 import sys
 import os
 import json
+import difflib
 
 # Add current directory to path for imports
 sys.path.insert(0, os.path.abspath(os.curdir))
@@ -42,14 +43,17 @@ class ComparingFrame(tk.Frame):
         self.tree.pack(expand=True, fill="both")
         self.tree.bind("<<TreeviewSelect>>", self._on_selection_changed)
         
-        # Code Preview Frame
+        # Diff Preview Frame
         preview_frame = tk.Frame(self.paned, bg=self.bg_color)
         self.paned.add(preview_frame, weight=1)
         
-        tk.Label(preview_frame, text="Strategy Code Preview:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w")
-        self.code_preview = scrolledtext.ScrolledText(preview_frame, bg="#1e293b", fg=self.fg_color, font=("Courier", 10))
-        self.code_preview.pack(expand=True, fill="both")
-        self.code_preview.config(state="disabled")
+        tk.Label(preview_frame, text="Visual Diff (Current AIStrategy.py vs Selected):", bg=self.bg_color, fg=self.fg_color).pack(anchor="w")
+        self.diff_view = scrolledtext.ScrolledText(preview_frame, bg="#1e293b", fg=self.fg_color, font=("Courier", 10))
+        self.diff_view.pack(expand=True, fill="both")
+        self.diff_view.tag_configure("plus", background="#166534", foreground="#f1f5f9")
+        self.diff_view.tag_configure("minus", background="#991b1b", foreground="#f1f5f9")
+        self.diff_view.tag_configure("normal", foreground="#94a3b8")
+        self.diff_view.config(state="disabled")
         
         # Action Buttons
         btn_frame = tk.Frame(self, bg=self.bg_color)
@@ -103,20 +107,44 @@ class ComparingFrame(tk.Frame):
         selected = self.tree.selection()
         if not selected:
             self.btn_restore.config(state="disabled")
-            self.code_preview.config(state="normal")
-            self.code_preview.delete("1.0", "end")
-            self.code_preview.config(state="disabled")
+            self.diff_view.config(state="normal")
+            self.diff_view.delete("1.0", "end")
+            self.diff_view.config(state="disabled")
             return
             
         run_id = selected[0]
         run = self.results_data.get(run_id)
         
         if run:
-            self.code_preview.config(state="normal")
-            self.code_preview.delete("1.0", "end")
-            self.code_preview.insert("1.0", run.get("strategy_code", ""))
-            self.code_preview.config(state="disabled")
+            self._show_diff(run.get("strategy_code", ""))
             self.btn_restore.config(state="normal")
+
+    def _show_diff(self, new_code):
+        self.diff_view.config(state="normal")
+        self.diff_view.delete("1.0", "end")
+        
+        current_code = ""
+        path = "user_data/strategies/AIStrategy.py"
+        if os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    current_code = f.read()
+            except Exception:
+                pass
+        
+        diff = difflib.ndiff(current_code.splitlines(), new_code.splitlines())
+        
+        for line in diff:
+            if line.startswith('+'):
+                self.diff_view.insert("end", line + "\n", "plus")
+            elif line.startswith('-'):
+                self.diff_view.insert("end", line + "\n", "minus")
+            elif line.startswith('?'):
+                continue
+            else:
+                self.diff_view.insert("end", line + "\n", "normal")
+        
+        self.diff_view.config(state="disabled")
 
     def on_restore_clicked(self):
         selected = self.tree.selection()
