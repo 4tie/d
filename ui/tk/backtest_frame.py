@@ -1,14 +1,17 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox, scrolledtext, filedialog
 import threading
 import sys
 import os
+import json
+import re
+from datetime import date, timedelta
 
 # Add current directory to path for imports
 sys.path.insert(0, os.path.abspath(os.curdir))
 
-from utils.backtest_runner import run_backtest
-from config.settings import BOT_CONFIG_PATH
+from utils.backtest_runner import run_backtest, download_data
+from config.settings import BOT_CONFIG_PATH, APP_CONFIG_PATH, load_app_config
 
 class BacktestFrame(tk.Frame):
     def __init__(self, parent, bg_color, fg_color, accent_color):
@@ -16,8 +19,12 @@ class BacktestFrame(tk.Frame):
         self.bg_color = bg_color
         self.fg_color = fg_color
         self.accent_color = accent_color
+        self._running = False
+        self._known_pairs = []
         
         self.setup_ui()
+        self._load_defaults_from_bot_config()
+        self._load_prefs_from_app_config()
 
     def setup_ui(self):
         container = tk.Frame(self, bg=self.bg_color)
@@ -35,46 +42,150 @@ class BacktestFrame(tk.Frame):
         self.tf_var = tk.StringVar(value="5m")
         self.tf_combo = ttk.Combobox(row1, textvariable=self.tf_var, width=8, values=["1m", "5m", "15m", "30m", "1h", "4h", "1d"])
         self.tf_combo.pack(side="left", padx=5)
+        self.tf_combo.bind("<<ComboboxSelected>>", self._schedule_save_prefs)
 
         tk.Label(row1, text="Timerange:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
         self.tr_var = tk.StringVar(value="")
-        self.tr_combo = ttk.Combobox(row1, textvariable=self.tr_var, width=15)
+        self.tr_combo = ttk.Combobox(row1, textvariable=self.tr_var, width=25)
         self._add_tr_presets()
         self.tr_combo.pack(side="left", padx=5)
+        self.tr_combo.bind("<<ComboboxSelected>>", self._schedule_save_prefs)
+        self.tr_combo.bind("<FocusOut>", self._schedule_save_prefs)
         
         # Row 2: Pairs Selection
         row2 = tk.Frame(ctrl_group, bg=self.bg_color)
         row2.pack(fill="x", padx=5, pady=2)
 
-        tk.Label(row2, text="Pairs (comma separated):", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
-        self.pairs_var = tk.StringVar(value="BTC/USDT,ETH/USDT,SOL/USDT")
-        tk.Entry(row2, textvariable=self.pairs_var, width=50).pack(side="left", padx=5, fill="x", expand=True)
+        tk.Label(row2, text="Pairs:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
+        self.pairs_var = tk.StringVar(value="")
+        self.pairs_entry = tk.Entry(row2, textvariable=self.pairs_var, width=50, bg="#1e293b", fg=self.fg_color, insertbackground=self.fg_color)
+        self.pairs_entry.pack(side="left", padx=5, fill="x", expand=True)
+        self.pairs_entry.bind("<FocusOut>", self._schedule_save_prefs)
 
         # Action Buttons
         btn_frame = tk.Frame(container, bg=self.bg_color)
         btn_frame.pack(fill="x", pady=5)
 
         self.btn_run = tk.Button(btn_frame, text="Run Backtest", command=self.on_run,
-                               bg=self.accent_color, fg="white", font=("Arial", 10, "bold"))
+                               bg=self.accent_color, fg="white", font=("Arial", 10, "bold"), relief="flat", padx=10)
         self.btn_run.pack(side="right", padx=5)
 
         self.btn_download = tk.Button(btn_frame, text="Download Data", command=self.on_download,
-                                    bg="#6366f1", fg="white")
+                                    bg="#6366f1", fg="white", relief="flat", padx=10)
         self.btn_download.pack(side="right", padx=5)
+
+        self.btn_load = tk.Button(btn_frame, text="Load Strategy File", command=self.on_load_file,
+                                bg="#4b5563", fg="white", relief="flat", padx=10)
+        self.btn_load.pack(side="left", padx=5)
         
         # Code and Results
         tk.Label(container, text="Strategy Code:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w", padx=5)
-        self.txt_code = scrolledtext.ScrolledText(container, height=10, bg="#1e293b", fg=self.fg_color)
+        self.txt_code = scrolledtext.ScrolledText(container, height=10, bg="#1e293b", fg=self.fg_color, insertbackground=self.fg_color)
         self.txt_code.pack(fill="x", padx=5, pady=5)
         
-        tk.Label(container, text="Results:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w", padx=5)
-        self.txt_results = scrolledtext.ScrolledText(container, bg="#1e293b", fg=self.fg_color, state="disabled")
+        tk.Label(container, text="Results Summary:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w", padx=5)
+        self.txt_results = scrolledtext.ScrolledText(container, bg="#1e293b", fg=self.fg_color, state="disabled", height=12)
         self.txt_results.pack(fill="both", expand=True, padx=5, pady=5)
 
+    def _add_tr_presets(self):
+        today = date.today()
+        presets = []
+        for days in [7, 30, 90, 180, 365]:
+            start = today - timedelta(days=days)
+            tr = f"{start.strftime('%Y%m%d')}-{today.strftime('%Y%m%d')}"
+            presets.append(f"Last {days}d ({tr})")
+        
+        ytd_start = date(today.year, 1, 1)
+        ytd = f"{ytd_start.strftime('%Y%m%d')}-{today.strftime('%Y%m%d')}"
+        presets.append(f"YTD ({ytd})")
+        
+        self.tr_combo['values'] = presets
+        self._load_timerange_history()
+
+    def _load_timerange_history(self):
+        try:
+            out_dir = os.path.join(os.getcwd(), "data", "backtest_results")
+            if not os.path.isdir(out_dir):
+                return
+            
+            timeranges = set()
+            for name in os.listdir(out_dir):
+                if name.endswith('.json'):
+                    path = os.path.join(out_dir, name)
+                    with open(path, 'r') as f:
+                        data = json.load(f)
+                        tr = data.get('metadata', {}).get('timerange') or data.get('timerange')
+                        if tr: timeranges.add(tr)
+            
+            current_values = list(self.tr_combo['values'])
+            for tr in sorted(timeranges, reverse=True):
+                if tr not in str(current_values):
+                    current_values.append(tr)
+            self.tr_combo['values'] = current_values
+        except: pass
+
+    def _load_defaults_from_bot_config(self):
+        try:
+            with open(BOT_CONFIG_PATH, 'r') as f:
+                cfg = json.load(f)
+            if 'timeframe' in cfg:
+                self.tf_var.set(cfg['timeframe'])
+            whitelist = cfg.get('exchange', {}).get('pair_whitelist', [])
+            if whitelist:
+                self._known_pairs = whitelist
+                if not self.pairs_var.get():
+                    self.pairs_var.set(",".join(whitelist))
+        except: pass
+
+    def _load_prefs_from_app_config(self):
+        try:
+            cfg = load_app_config()
+            bt = cfg.get('backtest', {})
+            if bt.get('timeframe'): self.tf_var.set(bt['timeframe'])
+            if bt.get('pairs'): self.pairs_var.set(bt['pairs'])
+            if bt.get('timerange'): self.tr_var.set(bt['timerange'])
+        except: pass
+
+    def _schedule_save_prefs(self, event=None):
+        def _save():
+            try:
+                cfg = load_app_config()
+                if 'backtest' not in cfg: cfg['backtest'] = {}
+                cfg['backtest']['timeframe'] = self.tf_var.get()
+                cfg['backtest']['pairs'] = self.pairs_var.get()
+                
+                tr_val = self.tr_var.get()
+                match = re.search(r"(\d{8}-\d{8})", tr_val)
+                cfg['backtest']['timerange'] = match.group(1) if match else tr_val
+                
+                with open(APP_CONFIG_PATH, 'w') as f:
+                    json.dump(cfg, f, indent=2)
+            except: pass
+        threading.Thread(target=_save, daemon=True).start()
+
+    def on_load_file(self):
+        path = filedialog.askopenfilename(filetypes=[("Python Files", "*.py")])
+        if path:
+            with open(path, 'r') as f:
+                self.txt_code.delete("1.0", "end")
+                self.txt_code.insert("1.0", f.read())
+
     def on_download(self):
-        from utils.backtest_runner import download_data
-        threading.Thread(target=lambda: download_data(BOT_CONFIG_PATH, self.tr_var.get(), self.tf_var.get(), self.pairs_var.get()), daemon=True).start()
-        messagebox.showinfo("Download", "Download started in background for selected pairs")
+        self.btn_download.config(state="disabled", text="Downloading...")
+        tr = self.tr_var.get()
+        match = re.search(r"(\d{8}-\d{8})", tr)
+        timerange = match.group(1) if match else tr
+        
+        def _task():
+            try:
+                download_data(BOT_CONFIG_PATH, timerange, self.tf_var.get(), self.pairs_var.get())
+                self.after(0, lambda: messagebox.showinfo("Success", "Data download complete"))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Error", str(e)))
+            finally:
+                self.after(0, lambda: self.btn_download.config(state="normal", text="Download Data"))
+        
+        threading.Thread(target=_task, daemon=True).start()
 
     def on_run(self):
         code = self.txt_code.get("1.0", "end-1c").strip()
@@ -85,16 +196,20 @@ class BacktestFrame(tk.Frame):
         self.btn_run.config(state="disabled", text="Running...")
         self.txt_results.config(state="normal")
         self.txt_results.delete("1.0", "end")
-        self.txt_results.insert("1.0", "Backtest started...")
+        self.txt_results.insert("1.0", "Backtest started...\n")
         self.txt_results.config(state="disabled")
         
+        tr = self.tr_var.get()
+        match = re.search(r"(\d{8}-\d{8})", tr)
+        timerange = match.group(1) if match else tr
+
         def _task():
             try:
                 res = run_backtest(
                     strategy_code=code, 
                     config_path=BOT_CONFIG_PATH, 
                     timeframe=self.tf_var.get(), 
-                    timerange=self.tr_var.get(),
+                    timerange=timerange,
                     pairs=self.pairs_var.get()
                 )
                 self.after(0, lambda: self._apply_results(res))
@@ -109,8 +224,15 @@ class BacktestFrame(tk.Frame):
         self.txt_results.config(state="normal")
         self.txt_results.delete("1.0", "end")
         if isinstance(res, dict):
-            summary = f"Strategy: {res.get('strategy_class')}\nFile: {res.get('result_file')}\n\nSTDOUT:\n{res.get('stdout')}"
-            self.txt_results.insert("1.0", summary)
+            summary = [
+                f"Strategy: {res.get('strategy_class')}",
+                f"Result file: {res.get('result_file')}",
+                "\nSTDOUT:",
+                res.get('stdout', ''),
+                "\nSTDERR:",
+                res.get('stderr', '')
+            ]
+            self.txt_results.insert("1.0", "\n".join(summary))
         else:
             self.txt_results.insert("1.0", str(res))
         self.txt_results.config(state="disabled")
