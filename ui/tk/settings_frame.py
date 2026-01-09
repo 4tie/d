@@ -8,7 +8,7 @@ import threading
 # Add current directory to path for imports
 sys.path.insert(0, os.path.abspath(os.curdir))
 
-from config.settings import APP_CONFIG_PATH, load_app_config
+from config.settings import APP_CONFIG_PATH, BOT_CONFIG_PATH, load_app_config
 
 class SettingsFrame(tk.Frame):
     def __init__(self, parent, main_app, bg_color, fg_color, accent_color):
@@ -161,6 +161,7 @@ class SettingsFrame(tk.Frame):
 
     def save_settings(self):
         try:
+            # 1. Update Application Config (data/config.json)
             cfg = load_app_config()
             cfg["api"] = {
                 "freqtrade_url": self.url_var.get(),
@@ -179,8 +180,23 @@ class SettingsFrame(tk.Frame):
             
             with open(APP_CONFIG_PATH, 'w') as f:
                 json.dump(cfg, f, indent=2)
+
+            # 2. Update Bot Config (userdata/config.json) for API Server credentials
+            if os.path.exists(BOT_CONFIG_PATH):
+                with open(BOT_CONFIG_PATH, 'r') as f:
+                    bot_cfg = json.load(f)
+                
+                if "api_server" not in bot_cfg:
+                    bot_cfg["api_server"] = {}
+                
+                # Sync credentials to bot config as well
+                bot_cfg["api_server"]["username"] = self.user_var.get()
+                bot_cfg["api_server"]["password"] = self.pass_var.get()
+                
+                with open(BOT_CONFIG_PATH, 'w') as f:
+                    json.dump(bot_cfg, f, indent=2)
             
-            messagebox.showinfo("Success", "Settings saved successfully.")
+            messagebox.showinfo("Success", "Settings saved successfully to both app and bot config.")
             self.main_app.client.update_settings(cfg["api"]["freqtrade_url"], cfg["api"]["user"], cfg["api"]["password"])
             self.main_app.strategy_service.update_ollama_settings(
                 base_url=cfg["ollama"]["base_url"],
