@@ -42,7 +42,7 @@ Background operations use Qt's `QThreadPool` with custom `Worker` runnables:
 
 ### Data Persistence
 - **data/config.json**: Application settings (API credentials, Ollama configuration, UI preferences)
-- **user_data/config.json**: Freqtrade bot configuration
+- **userdata/config.json**: Freqtrade bot configuration
 - **data/ai_performance.sqlite**: SQLite database tracking AI generation runs and backtest results
 - **data/knowledge_base.sqlite**: SQLite database for RAG-style context retrieval
 - **data/feedback/**: JSON files collecting user feedback on AI responses
