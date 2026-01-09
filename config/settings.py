@@ -13,8 +13,11 @@ def load_app_config():
     """Load application configuration from data/config.json"""
     if not os.path.exists(APP_CONFIG_PATH):
         return {}
-    with open(APP_CONFIG_PATH, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    try:
+        with open(APP_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 def _default_app_config() -> dict:
@@ -93,14 +96,14 @@ if not STRATEGY_DIR:
 
 # UI Configuration
 WINDOW_TITLE = ui_cfg.get("window_title")
-WINDOW_GEOMETRY = tuple(ui_cfg.get("window_geometry", []))
+WINDOW_GEOMETRY = list(ui_cfg.get("window_geometry", [100, 100, 1000, 700]))
 UPDATE_INTERVAL = ui_cfg.get("update_interval")
 
 if not WINDOW_TITLE:
     WINDOW_TITLE = "SmartTrade AI Wrapper"
     APP_CONFIG_ERRORS.append("Missing ui.window_title. Using default.")
 if len(WINDOW_GEOMETRY) != 4:
-    WINDOW_GEOMETRY = (100, 100, 1000, 700)
+    WINDOW_GEOMETRY = [100, 100, 1000, 700]
     APP_CONFIG_ERRORS.append("Missing/invalid ui.window_geometry. Using default.")
 if not isinstance(UPDATE_INTERVAL, int):
     UPDATE_INTERVAL = 5000

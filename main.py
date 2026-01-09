@@ -1,32 +1,41 @@
 import sys
 import os
 import logging
+import traceback
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QTabWidget, QLabel, QMessageBox)
 from PyQt6.QtCore import QTimer, QThreadPool, Qt
 
 # Add current directory to Python path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from config.settings import (FREQTRADE_URL, API_USER, API_PASS, 
-                           WINDOW_TITLE, WINDOW_GEOMETRY, UPDATE_INTERVAL, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_OPTIONS, OLLAMA_TASK_MODELS)
 
-from api.client import FreqtradeClient
-from ui.dashboard_tab import DashboardTab
-from ui.ai_builder_tab import AIBuilderTab
-from ui.ai_analysis_tab import AIAnalysisTab
-from ui.bot_control_tab import BotControlTab
-from ui.settings_tab import SettingsTab
-from ui.backtest_tab import BacktestTab
-from ui.chat_dock import ChatDock
-from core.strategy_service import StrategyService
-from utils.qt_worker import Worker
-from utils.logging_setup import setup_logging
+try:
+    from config.settings import (FREQTRADE_URL, API_USER, API_PASS, 
+                               WINDOW_TITLE, WINDOW_GEOMETRY, UPDATE_INTERVAL, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_OPTIONS, OLLAMA_TASK_MODELS)
+    from api.client import FreqtradeClient
+    from ui.dashboard_tab import DashboardTab
+    from ui.ai_builder_tab import AIBuilderTab
+    from ui.ai_analysis_tab import AIAnalysisTab
+    from ui.bot_control_tab import BotControlTab
+    from ui.settings_tab import SettingsTab
+    from ui.backtest_tab import BacktestTab
+    from ui.chat_dock import ChatDock
+    from core.strategy_service import StrategyService
+    from utils.qt_worker import Worker
+    from utils.logging_setup import setup_logging
+except Exception as e:
+    print(f"Critical import error: {e}")
+    traceback.print_exc()
+    sys.exit(1)
 
 class SmartBotApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
-        self.setGeometry(WINDOW_GEOMETRY[0], WINDOW_GEOMETRY[1], WINDOW_GEOMETRY[2], WINDOW_GEOMETRY[3])
+        if len(WINDOW_GEOMETRY) == 4:
+            self.setGeometry(WINDOW_GEOMETRY[0], WINDOW_GEOMETRY[1], WINDOW_GEOMETRY[2], WINDOW_GEOMETRY[3])
+        else:
+            self.setGeometry(100, 100, 1000, 700)
 
         # Make the dock resize handle clearly visible/grabbable inside the app UI.
         self.setStyleSheet(
@@ -41,7 +50,7 @@ class SmartBotApp(QMainWindow):
         self._strategy_save_running = False
 
         # Initialize services
-        self.client = FreqtradeClient(FREQTRADE_URL, API_USER, API_PASS)
+        self.client = FreqtradeClient(FREQTRADE_URL or "", API_USER or "", API_PASS or "")
         self.strategy_service = StrategyService()
 
         # Main Layout
@@ -56,35 +65,42 @@ class SmartBotApp(QMainWindow):
         self.layout.addWidget(self.tabs)
 
         # Create Tabs
-        self.create_dashboard_tab()
-        self.create_ai_builder_tab()
-        self.create_ai_analysis_tab()
-        self.create_bot_control_tab()
-        self.create_settings_tab()
-        self.create_backtest_tab()
+        try:
+            self.create_dashboard_tab()
+            self.create_ai_builder_tab()
+            self.create_ai_analysis_tab()
+            self.create_bot_control_tab()
+            self.create_settings_tab()
+            self.create_backtest_tab()
+        except Exception as e:
+            logging.error(f"Error creating tabs: {e}")
+            traceback.print_exc()
 
         # Status Bar
         self.status_label = QLabel("Connecting...")
         self.layout.addWidget(self.status_label)
 
         # Docked AI Chat (persistent across tabs)
-        self.chat_dock = ChatDock(
-            threadpool=self.threadpool,
-            base_url=OLLAMA_BASE_URL,
-            model=OLLAMA_MODEL,
-            options=OLLAMA_OPTIONS,
-            context_provider=self._build_chat_context,
-            parent=self,
-        )
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
-        self.setDockOptions(self.dockOptions() | QMainWindow.DockOption.AnimatedDocks)
-        self.resizeDocks([self.chat_dock], [420], Qt.Orientation.Horizontal)
-        self.chat_dock.topLevelChanged.connect(self._on_chat_top_level_changed)
+        try:
+            self.chat_dock = ChatDock(
+                threadpool=self.threadpool,
+                base_url=OLLAMA_BASE_URL,
+                model=OLLAMA_MODEL,
+                options=OLLAMA_OPTIONS,
+                context_provider=self._build_chat_context,
+                parent=self,
+            )
+            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
+            self.setDockOptions(self.dockOptions() | QMainWindow.DockOption.AnimatedDocks)
+            self.resizeDocks([self.chat_dock], [420], Qt.Orientation.Horizontal)
+            self.chat_dock.topLevelChanged.connect(self._on_chat_top_level_changed)
 
-        view_menu = self.menuBar().addMenu("View")
-        self.chat_toggle_action = self.chat_dock.toggleViewAction()
-        view_menu.addAction(self.chat_toggle_action)
-        self.chat_toggle_action.toggled.connect(self._on_chat_toggled)
+            view_menu = self.menuBar().addMenu("View")
+            self.chat_toggle_action = self.chat_dock.toggleViewAction()
+            view_menu.addAction(self.chat_toggle_action)
+            self.chat_toggle_action.toggled.connect(self._on_chat_toggled)
+        except Exception as e:
+            logging.error(f"Error creating chat dock: {e}")
 
         # Timer to update stats every 5 seconds
         self.timer = QTimer()
@@ -94,9 +110,9 @@ class SmartBotApp(QMainWindow):
 
         # Ensure initial settings (including optional task-specific models) are applied.
         self.apply_settings(
-            freqtrade_url=FREQTRADE_URL,
-            api_user=API_USER,
-            api_pass=API_PASS,
+            freqtrade_url=FREQTRADE_URL or "",
+            api_user=API_USER or "",
+            api_pass=API_PASS or "",
             ollama_url=OLLAMA_BASE_URL,
             ollama_model=OLLAMA_MODEL,
             ollama_options=OLLAMA_OPTIONS,
@@ -106,53 +122,46 @@ class SmartBotApp(QMainWindow):
     def _on_chat_toggled(self, visible: bool) -> None:
         if not visible:
             return
-
         self.restore_chat_dock()
 
     def _on_chat_top_level_changed(self, top_level: bool) -> None:
-        # Prevent floating state (was crashing for the user). Snap back into the main UI.
         if not top_level:
             return
         QTimer.singleShot(0, self.restore_chat_dock)
 
     def restore_chat_dock(self) -> None:
-        # Ensure the dock returns to the expected place.
         try:
-            if self.chat_dock.isFloating():
-                self.chat_dock.setFloating(False)
-            self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
-            self.chat_dock.show()
-            self.resizeDocks([self.chat_dock], [420], Qt.Orientation.Horizontal)
+            if hasattr(self, 'chat_dock'):
+                if self.chat_dock.isFloating():
+                    self.chat_dock.setFloating(False)
+                self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.chat_dock)
+                self.chat_dock.show()
+                self.resizeDocks([self.chat_dock], [420], Qt.Orientation.Horizontal)
         except Exception:
-            self.chat_dock.show()
+            if hasattr(self, 'chat_dock'):
+                self.chat_dock.show()
 
     def create_dashboard_tab(self):
-        """Tab 1: Shows Bot Status and Profit"""
         self.dashboard_tab = DashboardTab(self.client, self.threadpool)
         self.tabs.addTab(self.dashboard_tab, "Dashboard")
 
     def create_ai_builder_tab(self):
-        """Tab 2: The AI Strategy Generator"""
         self.ai_builder_tab = AIBuilderTab(main_app=self)
         self.tabs.addTab(self.ai_builder_tab, "AI Strategy Builder")
 
     def create_ai_analysis_tab(self):
-        """Tab 3: AI Analysis and Insights"""
         self.ai_analysis_tab = AIAnalysisTab(self.client, self.threadpool)
         self.tabs.addTab(self.ai_analysis_tab, "AI Analysis")
 
     def create_bot_control_tab(self):
-        """Tab 4: Bot Control and Configuration"""
         self.bot_control_tab = BotControlTab(self.client, self.threadpool)
         self.tabs.addTab(self.bot_control_tab, "Bot Control")
 
     def create_settings_tab(self):
-        """Tab 5: Application Settings"""
         self.settings_tab = SettingsTab(main_app=self, threadpool=self.threadpool)
         self.tabs.addTab(self.settings_tab, "Settings")
 
     def create_backtest_tab(self):
-        """Tab 6: Backtesting"""
         self.backtest_tab = BacktestTab(threadpool=self.threadpool)
         self.tabs.addTab(self.backtest_tab, "Backtest")
 
@@ -167,7 +176,6 @@ class SmartBotApp(QMainWindow):
             self.chat_dock.update_ollama_settings(base_url=ollama_url, model=ollama_model, options=ollama_options, task_models=ollama_task_models)
     
     def get_ollama_client(self):
-        """Get the Ollama client for performance monitoring"""
         if hasattr(self, 'chat_dock') and hasattr(self.chat_dock, 'ollama'):
             return self.chat_dock.ollama
         return None
@@ -181,55 +189,22 @@ class SmartBotApp(QMainWindow):
                 parts.append(f"Active tab: {tab_name}")
         except Exception:
             pass
-
-        try:
-            if hasattr(self, 'backtest_tab'):
-                tf = self.backtest_tab.timeframe_combo.currentText().strip()
-                pairs = self.backtest_tab.pairs_combo.currentText().strip()
-                timerange = self.backtest_tab.timerange_combo.currentText().strip()
-                if tf or pairs or timerange:
-                    parts.append("Backtest selections:")
-                    if tf:
-                        parts.append(f"- timeframe: {tf}")
-                    if pairs:
-                        parts.append(f"- pairs: {pairs}")
-                    if timerange:
-                        parts.append(f"- timerange: {timerange}")
-        except Exception:
-            pass
-
-        try:
-            if hasattr(self, 'ai_builder_tab'):
-                idea = self.ai_builder_tab.txt_prompt.toPlainText().strip()
-                if idea:
-                    parts.append("AI Builder idea (current):")
-                    parts.append(idea[:2000])
-        except Exception:
-            pass
-
-        try:
-            if hasattr(self, 'ai_analysis_tab'):
-                code = self.ai_analysis_tab.txt_strategy_input.toPlainText().strip()
-                if code:
-                    parts.append("AI Analysis strategy code loaded (truncated):")
-                    parts.append(code[:2000])
-        except Exception:
-            pass
-
         return "\n".join(parts)
 
     def update_stats(self):
-        """Polls the API for updates"""
         if self._stats_worker_running:
             return
 
         self._stats_worker_running = True
 
         def _fetch():
-            return {
-                "status": self.client.get_status(),
-                "profit": self.client.get_profit(),
-            }
+            try:
+                return {
+                    "status": self.client.get_status(),
+                    "profit": self.client.get_profit(),
+                }
+            except Exception:
+                return {"status": "Error", "profit": {}}
 
         worker = Worker(_fetch)
 
@@ -266,7 +241,6 @@ class SmartBotApp(QMainWindow):
         self.threadpool.start(worker)
 
     def generate_strategy_logic(self):
-        """Generate AI strategy using the strategy service"""
         if self._strategy_generate_running:
             return
 
@@ -301,7 +275,6 @@ class SmartBotApp(QMainWindow):
         self.threadpool.start(worker)
 
     def save_strategy(self):
-        """Save strategy using the strategy service"""
         if self._strategy_save_running:
             return
 
@@ -337,11 +310,18 @@ class SmartBotApp(QMainWindow):
         worker.signals.finished.connect(_on_finished)
         self.threadpool.start(worker)
 
-# --- RUN APP ---
 if __name__ == "__main__":
-    log_path = setup_logging()
-    logging.getLogger(__name__).info("Logging initialized. File: %s", log_path)
+    try:
+        log_path = setup_logging()
+        logging.getLogger(__name__).info("Logging initialized. File: %s", log_path)
+    except Exception as e:
+        print(f"Logging setup failed: {e}")
+
     app = QApplication(sys.argv)
-    window = SmartBotApp()
-    window.show()
-    sys.exit(app.exec())
+    try:
+        window = SmartBotApp()
+        window.show()
+        sys.exit(app.exec())
+    except Exception as e:
+        print(f"Application crash: {e}")
+        traceback.print_exc()
