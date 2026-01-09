@@ -3,7 +3,7 @@ import json
 import os
 import sqlite3
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 
 class AIPerformanceStore:
@@ -170,6 +170,29 @@ class AIPerformanceStore:
                 "last_ts": int(last_ts) if last_ts is not None else None,
                 "by_type": by_type,
             }
+
+    def get_recent_runs(self, limit: int = 20) -> List[Dict[str, Any]]:
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM strategy_runs ORDER BY ts DESC LIMIT ?", (limit,)
+            ).fetchall()
+            
+            results = []
+            for row in rows:
+                d = dict(row)
+                if d.get("backtest_summary_json"):
+                    try:
+                        d["backtest_summary"] = json.loads(d["backtest_summary_json"])
+                    except Exception:
+                        d["backtest_summary"] = {}
+                if d.get("trade_forensics_json"):
+                    try:
+                        d["trade_forensics"] = json.loads(d["trade_forensics_json"])
+                    except Exception:
+                        d["trade_forensics"] = {}
+                results.append(d)
+            return results
 
     def record_feedback(self, *, run_id: int, rating: int, comments: str | None = None) -> int:
         if not isinstance(run_id, int) or run_id <= 0:
