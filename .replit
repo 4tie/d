@@ -18,6 +18,10 @@ args = "Check Python Version"
 task = "workflow.run"
 args = "Start application"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Test Tkinter"
+
 [[workflows.workflow]]
 name = "Check Python Version"
 author = "agent"
@@ -39,6 +43,17 @@ outputType = "vnc"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python main.py"
+
+[[workflows.workflow]]
+name = "Test Tkinter"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python main2.py"
+
+[workflows.workflow.metadata]
+outputType = "vnc"
 
 [nix]
 channel = "stable-25_05"
