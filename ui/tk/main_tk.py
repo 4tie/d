@@ -15,6 +15,11 @@ try:
     from api.client import FreqtradeClient
     from core.strategy_service import StrategyService
     from utils.logging_setup import setup_logging
+    from ui.tk.bot_control_frame import BotControlFrame
+    from ui.tk.settings_frame import SettingsFrame
+    from ui.tk.ai_builder_frame import AIBuilderFrame
+    from ui.tk.ai_analysis_frame import AIAnalysisFrame
+    from ui.tk.backtest_frame import BacktestFrame
 except ImportError as e:
     print(f"Import error: {e}")
     sys.exit(1)
@@ -51,11 +56,17 @@ class SmartBotAppTK:
         
         # Create Tabs
         self.dashboard_frame = tk.Frame(self.notebook, bg=self.bg_color)
-        self.control_frame = tk.Frame(self.notebook, bg=self.bg_color)
-        self.settings_frame = tk.Frame(self.notebook, bg=self.bg_color)
+        self.builder_frame = AIBuilderFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
+        self.analysis_frame = AIAnalysisFrame(self.notebook, self.client, self.strategy_service, self.bg_color, self.fg_color, self.accent_color)
+        self.control_frame = BotControlFrame(self.notebook, self.client, self.strategy_service, self.bg_color, self.fg_color, self.accent_color)
+        self.backtest_frame = BacktestFrame(self.notebook, self.bg_color, self.fg_color, self.accent_color)
+        self.settings_frame = SettingsFrame(self.notebook, self, self.bg_color, self.fg_color, self.accent_color)
         
         self.notebook.add(self.dashboard_frame, text="Dashboard")
+        self.notebook.add(self.builder_frame, text="AI Builder")
+        self.notebook.add(self.analysis_frame, text="AI Analysis")
         self.notebook.add(self.control_frame, text="Control")
+        self.notebook.add(self.backtest_frame, text="Backtest")
         self.notebook.add(self.settings_frame, text="Settings")
         
         self.setup_dashboard()
