@@ -2,6 +2,12 @@ import sys
 import os
 import logging
 import traceback
+
+# Force software rendering for Qt/VNC stability
+os.environ["QT_QUICK_BACKEND"] = "software"
+os.environ["QT_RENDER_WIDGET_BACKEND"] = "software"
+os.environ["QT_X11_NO_MITSHM"] = "1"
+
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QTabWidget, QLabel, QMessageBox)
 from PyQt6.QtCore import QTimer, QThreadPool, Qt
@@ -32,16 +38,19 @@ class SmartBotApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
-        if len(WINDOW_GEOMETRY) == 4:
+        
+        # Ensure geometry is valid for VNC/X11
+        if isinstance(WINDOW_GEOMETRY, (list, tuple)) and len(WINDOW_GEOMETRY) == 4:
             self.setGeometry(WINDOW_GEOMETRY[0], WINDOW_GEOMETRY[1], WINDOW_GEOMETRY[2], WINDOW_GEOMETRY[3])
         else:
-            self.setGeometry(100, 100, 1000, 700)
+            self.setGeometry(100, 100, 1024, 768)
 
         # Make the dock resize handle clearly visible/grabbable inside the app UI.
         self.setStyleSheet(
             (self.styleSheet() or "")
             + "\nQMainWindow::separator { background: #1b2a4a; width: 6px; height: 6px; }"
             + "\nQMainWindow::separator:hover { background: #2b59ff; }"
+            + "\nQWidget { background-color: #0f172a; color: #f8fafc; }" # Dark theme base
         )
         
         self.threadpool = QThreadPool.globalInstance()
@@ -64,17 +73,8 @@ class SmartBotApp(QMainWindow):
         self.tabs.setDocumentMode(True)
         self.layout.addWidget(self.tabs)
 
-        # Create Tabs
-        try:
-            self.create_dashboard_tab()
-            self.create_ai_builder_tab()
-            self.create_ai_analysis_tab()
-            self.create_bot_control_tab()
-            self.create_settings_tab()
-            self.create_backtest_tab()
-        except Exception as e:
-            logging.error(f"Error creating tabs: {e}")
-            traceback.print_exc()
+        # Create Tabs with defensive error handling
+        self._init_tabs()
 
         # Status Bar
         self.status_label = QLabel("Connecting...")
@@ -118,6 +118,26 @@ class SmartBotApp(QMainWindow):
             ollama_options=OLLAMA_OPTIONS,
             ollama_task_models=OLLAMA_TASK_MODELS,
         )
+
+    def _init_tabs(self):
+        tab_creators = [
+            (self.create_dashboard_tab, "Dashboard"),
+            (self.create_ai_builder_tab, "AI Strategy Builder"),
+            (self.create_ai_analysis_tab, "AI Analysis"),
+            (self.create_bot_control_tab, "Bot Control"),
+            (self.create_settings_tab, "Settings"),
+            (self.create_backtest_tab, "Backtest")
+        ]
+        
+        for creator, name in tab_creators:
+            try:
+                creator()
+            except Exception as e:
+                logging.error(f"Failed to create tab {name}: {e}")
+                placeholder = QWidget()
+                l = QVBoxLayout(placeholder)
+                l.addWidget(QLabel(f"Error loading {name}: {e}"))
+                self.tabs.addTab(placeholder, name)
 
     def _on_chat_toggled(self, visible: bool) -> None:
         if not visible:
@@ -215,13 +235,13 @@ class SmartBotApp(QMainWindow):
             raw_status = str(status or "").strip()
             if raw_status == "Not configured":
                 display_status = "Not configured"
-                self.status_label.setStyleSheet("font-weight: bold; color: #888888;")
+                self.status_label.setStyleSheet("font-weight: bold; color: #94a3b8;")
             elif raw_status == "Error":
                 display_status = "Disconnected"
-                self.status_label.setStyleSheet("font-weight: bold; color: red;")
+                self.status_label.setStyleSheet("font-weight: bold; color: #ef4444;")
             else:
                 display_status = "Connected"
-                self.status_label.setStyleSheet("font-weight: bold; color: green;")
+                self.status_label.setStyleSheet("font-weight: bold; color: #22c55e;")
 
             self.status_label.setText(display_status)
 
@@ -230,7 +250,7 @@ class SmartBotApp(QMainWindow):
 
         def _on_error(_msg: str):
             self.status_label.setText("Disconnected")
-            self.status_label.setStyleSheet("font-weight: bold; color: red;")
+            self.status_label.setStyleSheet("font-weight: bold; color: #ef4444;")
 
         def _on_finished():
             self._stats_worker_running = False
@@ -318,6 +338,20 @@ if __name__ == "__main__":
         print(f"Logging setup failed: {e}")
 
     app = QApplication(sys.argv)
+    
+    # Global styles for consistency
+    app.setStyleSheet("""
+        QMainWindow, QWidget { background-color: #0f172a; color: #f8fafc; }
+        QTabWidget::pane { border: 1px solid #1e293b; background-color: #0f172a; }
+        QTabBar::tab { background: #1e293b; color: #94a3b8; padding: 8px 12px; border: 1px solid #334155; }
+        QTabBar::tab:selected { background: #334155; color: #f8fafc; }
+        QPushButton { background-color: #334155; border: 1px solid #475569; border-radius: 4px; padding: 6px; color: #f8fafc; }
+        QPushButton:hover { background-color: #475569; }
+        QLineEdit, QTextEdit { background-color: #1e293b; border: 1px solid #334155; color: #f8fafc; border-radius: 4px; }
+        QGroupBox { border: 1px solid #334155; margin-top: 1em; padding-top: 10px; font-weight: bold; }
+        QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px 0 3px; }
+    """)
+
     try:
         window = SmartBotApp()
         window.show()
