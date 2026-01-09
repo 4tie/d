@@ -3,3 +3,5 @@ freqtrade
 pandas
 PyQt6
 requests
+PyQt6
+requests

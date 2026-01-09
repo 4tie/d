@@ -33,13 +33,13 @@ outputType = "console"
 name = "Start application"
 author = "agent"
 
+[workflows.workflow.metadata]
+outputType = "vnc"
+
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python main.py"
 
-[workflows.workflow.metadata]
-outputType = "vnc"
-
 [nix]
 channel = "stable-25_05"
-packages = ["dbus", "fontconfig", "freetype", "glib", "glibcLocales", "libGL", "xorg.libX11", "xorg.libXScrnSaver", "xorg.libXcomposite", "xorg.libXcursor", "xorg.libXdamage", "xorg.libXext", "xorg.libXi", "xorg.libXinerama", "xorg.libXrandr", "xorg.libXrender", "xorg.libXtst", "xorg.libxcb", "libxkbcommon", "libglvnd", "libpulseaudio", "nss", "nspr", "expat", "wayland", "libdrm", "libgbm", "zstd", "xorg.xcbutilcursor", "xorg.xcbutilrenderutil", "xorg.xcbutilwm", "xorg.xcbutilimage", "xorg.xcbutilkeysyms", "libxcrypt", "libxcrypt-legacy", "xorg.xcbutil"]
+packages = ["dbus", "expat", "fontconfig", "freetype", "glib", "glibcLocales", "libGL", "libdrm", "libgbm", "libglvnd", "libpulseaudio", "libxcrypt", "libxcrypt-legacy", "libxkbcommon", "nspr", "nss", "wayland", "xorg.libX11", "xorg.libXScrnSaver", "xorg.libXcomposite", "xorg.libXcursor", "xorg.libXdamage", "xorg.libXext", "xorg.libXi", "xorg.libXinerama", "xorg.libXrandr", "xorg.libXrender", "xorg.libXtst", "xorg.libxcb", "xorg.xcbutil", "xorg.xcbutilcursor", "xorg.xcbutilimage", "xorg.xcbutilkeysyms", "xorg.xcbutilrenderutil", "xorg.xcbutilwm", "zstd"]
