@@ -1,0 +1,160 @@
+{
+    "$schema": "https://schema.freqtrade.io/schema.json",
+    "strategy": "scalp",
+    "max_open_trades": 4,
+    "stake_currency": "USDT",
+    "stake_amount": "unlimited",
+    "tradable_balance_ratio": 0.99,
+    "fiat_display_currency": "USD",
+    "dry_run": true,
+    "dry_run_wallet": 50,
+    "trading_mode": "spot",
+    "timeframe": "15m",
+    "cancel_open_orders_on_exit": true,
+    "use_exit_signal": true,
+    "entry_pricing": {
+        "price_side": "same",
+        "use_order_book": true,
+        "order_book_top": 1,
+        "price_last_balance": 0,
+        "check_depth_of_market": {
+            "enabled": false,
+            "bids_to_ask_delta": 1
+        }
+    },
+    "exit_pricing": {
+        "price_side": "other",
+        "use_order_book": true,
+        "order_book_top": 1
+    },
+    "exchange": {
+        "name": "binance",
+        "key": "",
+        "secret": "",
+        "method": "StaticPairList",
+        "pair_whitelist": [
+     
+            "BNB/USDT",
+            "BTC/USDT",
+            "ETH/USDT",
+            "XRP/USDT",
+            "ADA/USDT",
+            "SOL/USDT",
+            "DOT/USDT"
+        ],
+        "pair_blacklist": [],
+        "ccxt_config": {},
+        "ccxt_async_config": {},
+        "fees": {
+            "maker": 0.001,
+            "taker": 0.001
+        }
+    },
+    "pairlists": [
+        {
+            "method": "StaticPairList",
+            "pair_whitelist": [
+      
+                "BNB/USDT",
+                "BTC/USDT",
+                "ETH/USDT",
+                "XRP/USDT",
+                "ADA/USDT",
+                "SOL/USDT",
+                "DOT/USDT"
+            ],
+            "pair_blacklist": []
+        }
+    ],
+    "telegram": {
+        "enabled": false,
+        "token": "",
+        "chat_id": ""
+    },
+    "api_server": {
+        "enabled": true,
+        "listen_ip_address": "127.0.0.1",
+        "listen_port": 8080,
+        "verbosity": "error",
+        "enable_openapi": true,
+        "jwt_secret_key": "obEY6PIEi06ZZKzvRpG4QhweSK58gf-8Xpn",
+        "ws_token": "MweZ3_n4wXmLbZxVtQCbEfCBT1D_ox",
+        "CORS_origins": [
+            ""
+        ],
+        "username": "4t",
+        "password": "2323"
+    },
+    "bot_name": "4tiee",
+    "initial_state": "running",
+    "force_entry_enable": true,
+    "internals": {
+        "process_throttle_secs": 5
+    },
+    "dataformat_ohlcv": "json",
+    "dataformat_trades": "feather",
+    "freqaimodel": "XGBoostRegressor",
+    "freqai": {
+        "enabled": false,
+        "identifier": "qs_v9_scalp_5m1h_l2",
+        "write_metrics_to_disk": false,
+        "purge_old_models": 2,
+        "conv_width": 1,
+        "train_period_days": 21,
+        "backtest_period_days": 3,
+        "live_retrain_hours": 12,
+        "expiration_hours": 0,
+        "save_backtest_models": false,
+        "fit_live_predictions_candles": 120,
+        "data_kitchen_thread_count": 0,
+        "activate_tensorboard": false,
+        "wait_for_training_iteration_on_reload": true,
+        "continual_learning": false,
+        "keras": false,
+        "override_exchange_check": false,
+        "feature_parameters": {
+            "include_corr_pairlist": [
+                "BTC/USDT",
+                "BNB/USDT",
+                "ETH/USDT",
+                "XRP/USDT",
+                "ADA/USDT",
+                "SOL/USDT",
+                "DOT/USDT"
+            ],
+            "include_timeframes": [
+                "5m",
+                "15m",
+                "1h"
+            ],
+            "label_period_candles": 2,
+            "include_shifted_candles": 2,
+            "DI_threshold": 0,
+            "weight_factor": 0.3,
+            "principal_component_analysis": false,
+            "indicator_periods_candles": [
+                7,
+                14,
+                28
+            ],
+            "use_SVM_to_remove_outliers": false,
+            "plot_feature_importances": 0,
+            "shuffle_after_split": false,
+            "buffer_train_data_candles": 0
+        },
+        "data_split_parameters": {
+            "test_size": 0,
+            "random_state": 42,
+            "shuffle": false
+        },
+        "model_training_parameters": {
+            "n_estimators": 500,
+            "max_depth": 5,
+            "learning_rate": 0.05,
+            "subsample": 0.8,
+            "colsample_bytree": 0.7,
+            "reg_lambda": 1,
+            "min_child_weight": 5
+        }
+    }
+}

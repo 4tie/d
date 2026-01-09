@@ -1,0 +1,45 @@
+modules = ["python-3.11"]
+[agent]
+expertMode = true
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Check Python Version"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Check Python Version"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python --version"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python main.py"
+
+[workflows.workflow.metadata]
+outputType = "vnc"
+
+[nix]
+channel = "stable-25_05"
+packages = ["dbus", "fontconfig", "freetype", "glib", "glibcLocales", "libGL", "xorg.libX11", "xorg.libXScrnSaver", "xorg.libXcomposite", "xorg.libXcursor", "xorg.libXdamage", "xorg.libXext", "xorg.libXi", "xorg.libXinerama", "xorg.libXrandr", "xorg.libXrender", "xorg.libXtst", "xorg.libxcb", "libxkbcommon", "libglvnd", "libpulseaudio", "nss", "nspr", "expat", "wayland", "libdrm", "libgbm", "zstd", "xorg.xcbutilcursor", "xorg.xcbutilrenderutil", "xorg.xcbutilwm", "xorg.xcbutilimage", "xorg.xcbutilkeysyms", "libxcrypt", "libxcrypt-legacy", "xorg.xcbutil"]
