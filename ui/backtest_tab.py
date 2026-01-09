@@ -332,7 +332,7 @@ class BacktestTab(QWidget):
         pairs = list(dict.fromkeys([p for p in self._known_pairs if isinstance(p, str) and p.strip()]))
 
         if not pairs:
-            QMessageBox.warning(self, "Warning", "No pairs available. Add exchange.pair_whitelist in userdata/config.json.")
+            QMessageBox.warning(self, "Warning", "No pairs available. Add exchange.pair_whitelist in user_data/config.json.")
             return
 
         current_raw = self._get_current_pairs_value()

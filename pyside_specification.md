@@ -28,7 +28,7 @@ This document details the functional options and logic found in the PySide6 impl
 ### Logic
 - **Connection Testing**: Asynchronous testing for both Freqtrade and Ollama endpoints using `Worker` threads.
 - **Model Discovery**: Fetches available models from Ollama to populate dropdowns.
-- **Configuration Sync**: Saves to `data/config.json`. (Note: Updated in Tkinter version to also sync credentials to `userdata/config.json`).
+- **Configuration Sync**: Saves to `data/config.json`. (Note: Updated in Tkinter version to also sync credentials to `user_data/config.json`).
 
 ---
 

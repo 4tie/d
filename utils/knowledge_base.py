@@ -92,14 +92,14 @@ class KnowledgeBase:
             if os.path.exists(path):
                 yield (f"file:{rel}", _typ, rel, os.path.getmtime(path))
 
-        strat_dir = os.path.join(self.base_dir, "userdata", "strategies")
+        strat_dir = os.path.join(self.base_dir, "user_data", "strategies")
         if os.path.isdir(strat_dir):
             for name in sorted(os.listdir(strat_dir)):
                 if not name.lower().endswith(".py"):
                     continue
                 p = os.path.join(strat_dir, name)
                 if os.path.isfile(p):
-                    rel = f"userdata/strategies/{name}"
+                    rel = f"user_data/strategies/{name}"
                     yield (f"file:{rel}", "file", rel, os.path.getmtime(p))
 
     def _iter_recent_run_sources(self, limit: int = 80) -> Iterable[Tuple[str, str, str, float]]:

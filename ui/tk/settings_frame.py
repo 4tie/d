@@ -181,7 +181,7 @@ class SettingsFrame(tk.Frame):
             with open(APP_CONFIG_PATH, 'w') as f:
                 json.dump(cfg, f, indent=2)
 
-            # 2. Update Bot Config (userdata/config.json) for API Server credentials
+            # 2. Update Bot Config (user_data/config.json) for API Server credentials
             if os.path.exists(BOT_CONFIG_PATH):
                 with open(BOT_CONFIG_PATH, 'r') as f:
                     bot_cfg = json.load(f)

@@ -7,7 +7,7 @@ import os
 # --- Paths ---
 _base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP_CONFIG_PATH = os.path.join(_base_dir, "data", "config.json")
-BOT_CONFIG_PATH = os.path.join(_base_dir, "userdata", "config.json")
+BOT_CONFIG_PATH = os.path.join(_base_dir, "user_data", "config.json")
 
 
 def load_app_config():
@@ -29,7 +29,7 @@ def _default_app_config() -> dict:
             "password": "",
         },
         "strategy": {
-            "directory": "./userdata/strategies",
+            "directory": "./user_data/strategies",
         },
         "ui": {
             "window_title": "4tie",
@@ -95,9 +95,9 @@ if not FREQTRADE_URL or not API_USER or not API_PASS:
 STRATEGY_DIR = strategy_cfg.get("directory")
 
 if not STRATEGY_DIR:
-    STRATEGY_DIR = "./userdata/strategies"
+    STRATEGY_DIR = "./user_data/strategies"
     APP_CONFIG_ERRORS.append(
-        "Missing strategy.directory. Using default ./userdata/strategies.")
+        "Missing strategy.directory. Using default ./user_data/strategies.")
 
 # UI Configuration
 WINDOW_TITLE = ui_cfg.get("window_title")
