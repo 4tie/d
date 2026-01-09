@@ -26,10 +26,18 @@ class BacktestFrame(tk.Frame):
         tk.Label(top_frame, text="Timeframe:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
         self.tf_var = tk.StringVar(value="5m")
         tk.Entry(top_frame, textvariable=self.tf_var, width=10).pack(side="left", padx=5)
+
+        tk.Label(top_frame, text="Timerange:", bg=self.bg_color, fg=self.fg_color).pack(side="left", padx=5)
+        self.tr_var = tk.StringVar(value="")
+        tk.Entry(top_frame, textvariable=self.tr_var, width=15).pack(side="left", padx=5)
         
         self.btn_run = tk.Button(top_frame, text="Run Backtest", command=self.on_run,
                                bg=self.accent_color, fg="white", font=("Arial", 10, "bold"))
         self.btn_run.pack(side="right", padx=5)
+
+        self.btn_download = tk.Button(top_frame, text="Download Data", command=self.on_download,
+                                    bg="#6366f1", fg="white")
+        self.btn_download.pack(side="right", padx=5)
         
         tk.Label(self, text="Strategy Code:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w", padx=10)
         self.txt_code = scrolledtext.ScrolledText(self, height=12, bg="#1e293b", fg=self.fg_color)
@@ -38,6 +46,11 @@ class BacktestFrame(tk.Frame):
         tk.Label(self, text="Results:", bg=self.bg_color, fg=self.fg_color).pack(anchor="w", padx=10)
         self.txt_results = scrolledtext.ScrolledText(self, bg="#1e293b", fg=self.fg_color, state="disabled")
         self.txt_results.pack(fill="both", expand=True, padx=10, pady=5)
+
+    def on_download(self):
+        from utils.backtest_runner import download_data
+        threading.Thread(target=lambda: download_data(BOT_CONFIG_PATH, self.tr_var.get(), self.tf_var.get()), daemon=True).start()
+        messagebox.showinfo("Download", "Download started in background")
 
     def on_run(self):
         code = self.txt_code.get("1.0", "end-1c").strip()
@@ -53,7 +66,7 @@ class BacktestFrame(tk.Frame):
         
         def _task():
             try:
-                res = run_backtest(strategy_code=code, config_path=BOT_CONFIG_PATH, timeframe=self.tf_var.get())
+                res = run_backtest(strategy_code=code, config_path=BOT_CONFIG_PATH, timeframe=self.tf_var.get(), timerange=self.tr_var.get())
                 self.after(0, lambda: self._apply_results(res))
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("Error", str(e)))

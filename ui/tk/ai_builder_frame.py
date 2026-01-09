@@ -49,9 +49,7 @@ class AIBuilderFrame(tk.Frame):
         
         def _task():
             try:
-                # Mocking AI call for now as we'd need to link with StrategyService properly
-                # In real app, we'd call strategy_service.generate_strategy(prompt)
-                code = f"# Generated strategy based on: {prompt}\n# [Mock Code]\nfrom freqtrade.strategy import IStrategy\nclass AIStrategy(IStrategy):\n    pass"
+                code = self.main_app.strategy_service.generate_strategy(prompt)
                 self.after(0, lambda: self._apply_code(code))
             except Exception as e:
                 self.after(0, lambda: messagebox.showerror("Error", str(e)))
@@ -70,5 +68,8 @@ class AIBuilderFrame(tk.Frame):
             messagebox.showwarning("Warning", "No code to save.")
             return
         
-        # In real app, call main_app.strategy_service.save_strategy_code(code)
-        messagebox.showinfo("Success", "Strategy saved to strategies folder (Mock).")
+        try:
+            path = self.main_app.strategy_service.save_strategy_code(code)
+            messagebox.showinfo("Success", f"Strategy saved to {path}")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))

@@ -113,14 +113,19 @@ class SmartBotAppTK:
         self.status_var.set(f"Bot Status: {status}")
         if status == "Connected":
             self.status_bar_var.set("Bot: Connected")
+        elif status == "Disconnected":
+            self.status_bar_var.set("Bot: Disconnected")
         else:
             self.status_bar_var.set(f"Bot: {status}")
             
-        if isinstance(profit, dict) and 'profit_all_percent' in profit:
-            p = profit['profit_all_percent']
-            self.profit_var.set(f"Total Profit: {p:.2f}%")
+        if isinstance(profit, dict) and ('profit_all_percent' in profit or 'profit_all_pct' in profit):
+            p = profit.get('profit_all_percent', profit.get('profit_all_pct', 0))
+            self.profit_var.set(f"Total Profit: {float(p):.2f}%")
         else:
             self.profit_var.set("Total Profit: ---")
+
+    def get_ollama_client(self):
+        return self.strategy_service.ollama_client
 
     def start_update_loop(self):
         self.update_stats()
