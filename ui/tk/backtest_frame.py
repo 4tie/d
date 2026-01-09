@@ -308,6 +308,18 @@ class BacktestFrame(tk.Frame):
                 # Store results for analysis frame
                 self.master.master.master.last_backtest_results = res
                 self.after(0, lambda: self._apply_results(res))
+                
+                # Auto-load into analysis frame
+                try:
+                    tabs = self.master.master
+                    for i in range(tabs.index("end")):
+                        if tabs.tab(i, "text") == "AI Analysis":
+                            analysis_frame = tabs.winfo_children()[i]
+                            if hasattr(analysis_frame, 'on_load_last_backtest'):
+                                self.after(0, analysis_frame.on_load_last_backtest)
+                            break
+                except Exception:
+                    pass
             except Exception as e:
                 error_msg = str(e)
                 self.after(0, lambda msg=error_msg: messagebox.showerror("Error", msg))

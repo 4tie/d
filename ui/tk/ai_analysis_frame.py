@@ -25,15 +25,6 @@ class AIAnalysisFrame(tk.Frame):
         self.setup_ui()
 
     def setup_ui(self):
-        # Action Bar for quick loading
-        action_bar = tk.Frame(self, bg=self.bg_color)
-        action_bar.pack(fill="x", padx=10, pady=5)
-        
-        self.btn_load_last = tk.Button(action_bar, text="Load Last Backtest Data", 
-                                     command=self.on_load_last_backtest,
-                                     bg="#8b5cf6", fg="white", relief="flat", padx=10)
-        self.btn_load_last.pack(side="left")
-
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(expand=True, fill="both", padx=10, pady=10)
         
