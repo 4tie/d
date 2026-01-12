@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { ApiError, apiGet, apiPost, formatApiError } from "../lib/api";
 import { useLocalStorageState } from "../lib/storage";
 import { Button, Card, Input, Textarea, TokenInput } from "../components/primitives";
+import { useSelectedStrategy } from "../lib/strategy-context";
 
 type StrategyFileView = {
   filename: string;
@@ -16,6 +17,18 @@ type StrategyFileView = {
 type ValidateResponse = {
   ok: boolean;
   error: string;
+};
+
+type RepairResponse = {
+  strategy_code: string;
+  repaired: boolean;
+  original_error: string;
+  validation: ValidateResponse;
+};
+
+type DiffOp = {
+  kind: "equal" | "insert" | "delete";
+  line: string;
 };
 
 type JobView = {
@@ -65,6 +78,9 @@ export default function AIStrategy() {
   const [filename, setFilename] = useLocalStorageState<string>(`st_strategy_filename_${fileKey}`, selectedFile);
   const [validation, setValidation] = useState<ValidateResponse | null>(null);
   const [err, setErr] = useState<string>("");
+  const [repairing, setRepairing] = useState<boolean>(false);
+  const [applying, setApplying] = useState<boolean>(false);
+  const { strategyCode: selectedStrategyCode, selectedFilename } = useSelectedStrategy();
 
   const [timerange, setTimerange] = useLocalStorageState<string>("st_cfg_timerange", "");
   const [fromDate, setFromDate] = useLocalStorageState<string>("st_cfg_from_date", "");
@@ -171,6 +187,15 @@ export default function AIStrategy() {
     setJobId("");
   }, [fileQ.data]);
 
+  // Auto-populate from selected strategy
+  useEffect(() => {
+    if (selectedStrategyCode && selectedFilename) {
+      setOriginalCode(selectedStrategyCode);
+      setProposedCode(selectedStrategyCode);
+      setFilename(selectedFilename);
+    }
+  }, [selectedStrategyCode, selectedFilename]);
+
   const changeStats = useMemo(() => {
     const a = originalCode.split("\n");
     const b = proposedCode.split("\n");
@@ -186,6 +211,109 @@ export default function AIStrategy() {
     };
   }, [originalCode, proposedCode]);
 
+  function diffLines(aText: string, bText: string): DiffOp[] {
+    const a = String(aText || "").split("\n");
+    const b = String(bText || "").split("\n");
+    const n = a.length;
+    const m = b.length;
+    const max = n + m;
+    const offset = max;
+
+    let v = new Array<number>(2 * max + 1).fill(0);
+    const trace: number[][] = [];
+
+    for (let d = 0; d <= max; d++) {
+      trace.push(v.slice());
+      for (let k = -d; k <= d; k += 2) {
+        const kIndex = offset + k;
+        let x: number;
+        if (k === -d || (k !== d && v[kIndex - 1] < v[kIndex + 1])) {
+          x = v[kIndex + 1];
+        } else {
+          x = v[kIndex - 1] + 1;
+        }
+        let y = x - k;
+        while (x < n && y < m && a[x] === b[y]) {
+          x++;
+          y++;
+        }
+        v[kIndex] = x;
+        if (x >= n && y >= m) {
+          trace.push(v.slice());
+          const ops: DiffOp[] = [];
+          let curX = n;
+          let curY = m;
+          for (let dd = trace.length - 1; dd > 0; dd--) {
+            const vv = trace[dd - 1];
+            const curK = curX - curY;
+            let prevK: number;
+            if (curK === -dd + 1 || (curK !== dd - 1 && vv[offset + curK - 1] < vv[offset + curK + 1])) {
+              prevK = curK + 1;
+            } else {
+              prevK = curK - 1;
+            }
+            const prevX = vv[offset + prevK];
+            const prevY = prevX - prevK;
+            while (curX > prevX && curY > prevY) {
+              ops.push({ kind: "equal", line: a[curX - 1] ?? "" });
+              curX--;
+              curY--;
+            }
+            if (curX === prevX) {
+              ops.push({ kind: "insert", line: b[curY - 1] ?? "" });
+              curY--;
+            } else {
+              ops.push({ kind: "delete", line: a[curX - 1] ?? "" });
+              curX--;
+            }
+          }
+          while (curX > 0 && curY > 0) {
+            ops.push({ kind: "equal", line: a[curX - 1] ?? "" });
+            curX--;
+            curY--;
+          }
+          while (curX > 0) {
+            ops.push({ kind: "delete", line: a[curX - 1] ?? "" });
+            curX--;
+          }
+          while (curY > 0) {
+            ops.push({ kind: "insert", line: b[curY - 1] ?? "" });
+            curY--;
+          }
+          return ops.reverse();
+        }
+      }
+    }
+
+    return [];
+  }
+
+  const diffOps = useMemo(() => {
+    if (!originalCode && !proposedCode) return [];
+    return diffLines(originalCode, proposedCode);
+  }, [originalCode, proposedCode]);
+
+  const diffChangeOps = useMemo(() => {
+    return diffOps.filter((op) => op.kind !== "equal");
+  }, [diffOps]);
+
+  const hasDiffChanges = diffChangeOps.length > 0;
+
+  async function apply() {
+    setErr("");
+    setApplying(true);
+    try {
+      const fn = filename.trim();
+      if (!fn) throw new Error("filename is required");
+      await apiPost("/api/strategy/save", { code: proposedCode, filename: fn });
+      setOriginalCode(proposedCode);
+    } catch (e) {
+      setErr(formatApiError(e));
+    } finally {
+      setApplying(false);
+    }
+  }
+
   async function validate() {
     setErr("");
     setValidation(null);
@@ -194,6 +322,25 @@ export default function AIStrategy() {
       setValidation(res);
     } catch (e) {
       setErr(formatApiError(e));
+    }
+  }
+
+  async function repairWithAi() {
+    setErr("");
+    setRepairing(true);
+    try {
+      const res = await apiPost<RepairResponse>("/api/ai/strategy/repair", { code: proposedCode, prompt: prompt.trim() || undefined });
+      const next = String(res.strategy_code || "");
+      if (!next.trim()) throw new Error("AI repair returned empty code");
+      setProposedCode(next);
+      setValidation(res.validation || null);
+      if (res.validation && !res.validation.ok) {
+        setErr(res.validation.error || "AI repair returned code that still fails validation");
+      }
+    } catch (e) {
+      setErr(formatApiError(e));
+    } finally {
+      setRepairing(false);
     }
   }
 
@@ -275,6 +422,13 @@ export default function AIStrategy() {
               <Button variant="outline" onClick={validate}>
                 Validate
               </Button>
+              <Button
+                variant="outline"
+                onClick={repairWithAi}
+                disabled={repairing || !proposedCode.trim()}
+              >
+                {repairing ? "Fixing..." : "Fix with AI"}
+              </Button>
               {validation ? (
                 <span className={validation.ok ? "ml-3 text-xs font-mono text-semantic-pos" : "ml-3 text-xs font-mono text-semantic-neg"}>
                   {validation.ok ? "OK" : validation.error}
@@ -301,12 +455,44 @@ export default function AIStrategy() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         <div className="lg:col-span-2 space-y-6">
           <Card title="Original">
-            <Textarea value={originalCode} onChange={(_v: string) => {}} rows={18} className="opacity-70" />
+            <Textarea value={originalCode} onChange={(_v: string) => { }} rows={18} className="opacity-70" />
           </Card>
         </div>
 
         <div className="lg:col-span-3 space-y-4">
           <Card title="Proposed">
+            {hasDiffChanges ? (
+              <div className="mb-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="text-xs text-fg-400">Diff (Original → Proposed)</div>
+                  <Button
+                    variant="primary"
+                    onClick={apply}
+                    disabled={applying || repairing || !proposedCode.trim()}
+                  >
+                    {applying ? "Applying..." : "Apply"}
+                  </Button>
+                </div>
+                <div className="text-xs font-mono bg-bg-900 border border-border-700 rounded-md overflow-auto max-h-[420px]">
+                  {diffChangeOps.map((op, idx) => {
+                    const prefix = op.kind === "insert" ? "+" : op.kind === "delete" ? "-" : " ";
+                    const rowClass =
+                      op.kind === "insert"
+                        ? "bg-semantic-pos/10 text-semantic-pos"
+                        : op.kind === "delete"
+                          ? "bg-semantic-neg/10 text-semantic-neg"
+                          : "text-fg-200";
+                    return (
+                      <div key={idx} className={`px-3 py-0.5 whitespace-pre ${rowClass}`}>
+                        <span className="inline-block w-4 select-none opacity-70">{prefix}</span>
+                        <span>{op.line}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
             <Textarea value={proposedCode} onChange={setProposedCode} rows={18} />
           </Card>
 

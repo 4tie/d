@@ -1,89 +1,75 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { apiGet, formatApiError } from "../lib/api";
 import { Card, Metric } from "../components/primitives";
+import { SkeletonMetric, SkeletonCard, EmptyState } from "../components/loading";
 
-type ProfitResponse = Record<string, any>;
 type ShowConfig = Record<string, any>;
 
+type RunRow = Record<string, any>;
+
+type RunsResponse = {
+  runs: RunRow[];
+};
+
 export default function Dashboard() {
-  const pingQ = useQuery({
-    queryKey: ["ft_ping"],
-    queryFn: () => apiGet<any>("/api/freqtrade/ping"),
-    refetchInterval: 5000,
-  });
-
-  const profitQ = useQuery({
-    queryKey: ["ft_profit"],
-    queryFn: () => apiGet<ProfitResponse>("/api/freqtrade/profit"),
-    refetchInterval: 15000,
-    enabled: pingQ.isSuccess,
-  });
-
   const cfgQ = useQuery({
-    queryKey: ["ft_show_config"],
-    queryFn: () => apiGet<ShowConfig>("/api/freqtrade/show_config"),
+    queryKey: ["bot_show_config"],
+    queryFn: () => apiGet<ShowConfig>("/api/bot/show_config"),
     refetchInterval: 30000,
-    enabled: pingQ.isSuccess,
+  });
+  const runsQ = useQuery({
+    queryKey: ["history_runs_dashboard"],
+    queryFn: () => apiGet<RunsResponse>("/api/history/runs?limit=80"),
+    refetchInterval: 15000,
   });
 
-  const dailyQ = useQuery({
-    queryKey: ["ft_daily"],
-    queryFn: () => apiGet<any>("/api/freqtrade/daily?days=180"),
-    refetchInterval: 60000,
-    enabled: pingQ.isSuccess,
-  });
-
-  const tradesQ = useQuery({
-    queryKey: ["ft_trades"],
-    queryFn: () => apiGet<any>("/api/freqtrade/trades"),
-    refetchInterval: 30000,
-    enabled: pingQ.isSuccess,
-  });
-
-  const recentTrades = useMemo(() => {
-    const d = tradesQ.data;
-    const arr = Array.isArray(d) ? d : Array.isArray((d as any)?.trades) ? (d as any).trades : [];
-    if (!Array.isArray(arr)) return [];
-    return arr.slice(0, 10);
-  }, [tradesQ.data]);
+  const runs = Array.isArray(runsQ.data?.runs) ? runsQ.data?.runs : [];
+  const latestRun = runs.length ? runs[0] : null;
 
   const profitPct = useMemo(() => {
-    const p = profitQ.data;
-    const v = (p as any)?.profit_all_percent ?? (p as any)?.profit_all_pct ?? (p as any)?.profit_total_pct;
+    const v = (latestRun as any)?.backtest_summary?.metrics?.profit_total_pct;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
-  }, [profitQ.data]);
+  }, [latestRun]);
 
   const ddPct = useMemo(() => {
-    const p = profitQ.data;
-    const v = (p as any)?.max_drawdown_abs ?? (p as any)?.max_drawdown_pct ?? (p as any)?.max_drawdown;
+    const v = (latestRun as any)?.backtest_summary?.metrics?.max_drawdown_pct ?? (latestRun as any)?.trade_forensics?.risk_adjusted?.max_drawdown_pct;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
-  }, [profitQ.data]);
+  }, [latestRun]);
 
-  const equitySeries = useMemo(() => {
-    const d = dailyQ.data;
-    const arr = Array.isArray(d) ? d : Array.isArray((d as any)?.data) ? (d as any).data : Array.isArray((d as any)?.daily) ? (d as any).daily : [];
-    return arr
-      .map((row: any) => {
-        const date = String(row?.date || row?.timestamp || row?.day || "");
-        const value = Number(row?.profit_pct ?? row?.profit_percent ?? row?.profit ?? row?.profit_total_pct ?? row?.pct);
-        return {
-          date,
-          value: Number.isFinite(value) ? value : null,
-        };
-      })
-      .filter((x: any) => x.value !== null);
-  }, [dailyQ.data]);
+  const bestTrades = useMemo(() => {
+    const arr = (latestRun as any)?.backtest_summary?.best_trades;
+    return Array.isArray(arr) ? arr : [];
+  }, [latestRun]);
 
-  const errors = [pingQ.error, profitQ.error, cfgQ.error, dailyQ.error, tradesQ.error].filter(Boolean);
+  const worstTrades = useMemo(() => {
+    const arr = (latestRun as any)?.backtest_summary?.worst_trades;
+    return Array.isArray(arr) ? arr : [];
+  }, [latestRun]);
+
+  const errors = [cfgQ.error, runsQ.error].filter(Boolean);
+  const isInitialLoading = cfgQ.isLoading || runsQ.isLoading;
+
+  if (isInitialLoading) {
+    return (
+      <div className="space-y-4">
+        <SkeletonCard />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <SkeletonMetric />
+          <SkeletonMetric />
+          <SkeletonMetric />
+        </div>
+        <SkeletonCard />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-fade-in">
       {errors.length ? (
-        <div className="text-xs font-mono text-semantic-neg">{errors.map((e) => formatApiError(e)).join(" | ")}</div>
+        <div className="text-xs font-mono text-semantic-neg animate-slide-down">{errors.map((e) => formatApiError(e)).join(" | ")}</div>
       ) : null}
 
       <Card title="Strategy Identity">
@@ -105,65 +91,50 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Metric
-          label="Net Profit %"
+          label="Last Backtest Profit %"
           value={profitPct === null ? "-" : `${profitPct >= 0 ? "+" : ""}${profitPct.toFixed(2)}%`}
           tone={profitPct === null ? "neutral" : profitPct >= 0 ? "pos" : "neg"}
         />
         <Metric
-          label="Max Drawdown %"
+          label="Last Backtest Max DD %"
           value={ddPct === null ? "-" : `${ddPct.toFixed(2)}%`}
           tone={ddPct === null ? "neutral" : "warn"}
         />
-        <Metric label="Connection" value={pingQ.isSuccess ? "Online" : "Offline"} tone={pingQ.isSuccess ? "pos" : "neg"} />
+        <Metric label="Runs" value={runs.length ? String(runs.length) : "0"} tone={runs.length ? "pos" : "neutral"} />
       </div>
 
-      <Card title="Equity Curve (Daily %)">
-        {equitySeries.length ? (
-          <div className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={equitySeries}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgb(var(--border-700))" />
-                <XAxis dataKey="date" hide />
-                <YAxis stroke="rgb(var(--fg-400))" fontSize={12} tickFormatter={(v) => `${v}%`} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: "rgb(var(--bg-900))", border: "1px solid rgb(var(--border-700))" }}
-                  itemStyle={{ color: "rgb(var(--fg-100))" }}
-                />
-                <Line type="monotone" dataKey="value" stroke="rgb(var(--semantic-info))" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+      <Card title="Last Run">
+        {!latestRun ? (
+          <EmptyState title="No runs yet" description="Run a backtest to populate local history." />
         ) : (
-          <div className="text-sm text-fg-400">No daily series available.</div>
+          <div className="space-y-2">
+            <div className="text-xs font-mono text-fg-400">Run #{String((latestRun as any).id || "-")}</div>
+            <div className="text-xs font-mono text-fg-400">Type: {String((latestRun as any).run_type || "-")}</div>
+            <div className="text-xs font-mono text-fg-400">Time: {Number((latestRun as any).ts) ? new Date(Number((latestRun as any).ts) * 1000).toLocaleString() : ""}</div>
+          </div>
         )}
       </Card>
 
-      <Card title="Recent Trades">
-        {recentTrades.length ? (
-          <div className="space-y-2">
-            {recentTrades.map((t: any, idx: number) => {
-              const pair = String(t?.pair || "");
-              const profit = Number(t?.profit_pct ?? t?.close_profit_pct ?? t?.profit_ratio);
-              const profitNum = Number.isFinite(profit) ? profit : null;
-              const exitReason = String(t?.exit_reason || t?.exit_tag || "");
-              return (
-                <div
-                  key={String(t?.trade_id || t?.id || idx)}
-                  className="flex items-center justify-between gap-3 rounded-md border border-border-700 bg-panel-800 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-mono text-fg-100 truncate">{pair}</div>
-                    <div className="text-[11px] text-fg-400 font-mono truncate">{exitReason}</div>
-                  </div>
-                  <div className={profitNum !== null && profitNum >= 0 ? "text-semantic-pos font-mono text-xs" : "text-semantic-neg font-mono text-xs"}>
-                    {profitNum === null ? "-" : `${profitNum >= 0 ? "+" : ""}${profitNum.toFixed(3)}`}
-                  </div>
-                </div>
-              );
-            })}
+      <Card title="Backtest Trades (Best / Worst)">
+        {!latestRun ? (
+          <EmptyState title="No trades" description="Run a backtest to generate trade samples." />
+        ) : (bestTrades.length || worstTrades.length) ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <div className="text-xs text-fg-400 font-mono">Worst</div>
+              <pre className="mt-2 text-xs font-mono bg-bg-900 border border-border-700 rounded-md p-3 overflow-auto max-h-[260px]">
+                {JSON.stringify(worstTrades.slice(0, 10), null, 2)}
+              </pre>
+            </div>
+            <div>
+              <div className="text-xs text-fg-400 font-mono">Best</div>
+              <pre className="mt-2 text-xs font-mono bg-bg-900 border border-border-700 rounded-md p-3 overflow-auto max-h-[260px]">
+                {JSON.stringify(bestTrades.slice(0, 10), null, 2)}
+              </pre>
+            </div>
           </div>
         ) : (
-          <div className="text-sm text-fg-400">No trades available.</div>
+          <EmptyState title="No trade samples" description="This run did not include trade samples in its summary." />
         )}
       </Card>
 

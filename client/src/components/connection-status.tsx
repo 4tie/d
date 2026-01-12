@@ -1,29 +1,45 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../lib/api";
 
-type HealthResponse = {
-  ok: boolean;
-  ts: number;
-  has_app_config: boolean;
-  has_bot_config: boolean;
-};
-
 export function ConnectionStatus() {
-  const q = useQuery({
-    queryKey: ["health"],
-    queryFn: () => apiGet<HealthResponse>("/api/health"),
-    refetchInterval: 5000,
+  const healthQ = useQuery({
+    queryKey: ["api_health"],
+    queryFn: () => apiGet<{ ok: boolean }>("/api/health"),
+    refetchInterval: 10000,
+    retry: 1,
   });
 
-  const ok = q.data?.ok === true;
+  const ollamaQ = useQuery({
+    queryKey: ["ollama_ping"],
+    queryFn: () => apiGet<{ available: boolean }>("/api/ollama/ping"),
+    refetchInterval: 10000,
+    retry: 1,
+  });
 
-  const dotClass = ok ? "bg-semantic-pos" : "bg-semantic-neg";
-  const text = ok ? "API: Online" : "API: Offline";
+  const apiOk = healthQ.isSuccess && healthQ.data?.ok;
+  const aiOk = ollamaQ.isSuccess && !!ollamaQ.data?.available;
 
   return (
-    <div className="flex items-center gap-2 text-xs text-fg-400">
-      <span className={`h-2.5 w-2.5 rounded-full ${dotClass}`} />
-      <span className="font-mono">{text}</span>
+    <div className="flex items-center gap-2 text-xs">
+      <div className="flex items-center gap-1.5">
+        <div
+          className={`w-2 h-2 rounded-full transition-all duration-300 ${apiOk ? "bg-semantic-pos animate-pulse-glow" : "bg-semantic-neg"
+            }`}
+        />
+        <span className={`font-mono transition-colors duration-300 ${apiOk ? "text-semantic-pos" : "text-semantic-neg"
+          }`}>
+          API
+        </span>
+      </div>
+      <div className="w-px h-3 bg-border-700" />
+      <div className="flex items-center gap-1.5">
+        <div
+          className={`w-2 h-2 rounded-full transition-all duration-300 ${aiOk ? "bg-semantic-pos animate-pulse-glow" : "bg-fg-400"}`}
+        />
+        <span className={`font-mono transition-colors duration-300 ${aiOk ? "text-semantic-pos" : "text-fg-400"}`}>
+          AI
+        </span>
+      </div>
     </div>
   );
 }

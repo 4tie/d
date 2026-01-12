@@ -6,23 +6,31 @@ import { Card, Input } from "../components/primitives";
 
 type Trade = Record<string, any>;
 
+type RunRow = Record<string, any>;
+
+type RunsResponse = {
+  runs: RunRow[];
+};
+
 export default function Trades() {
   const [pairFilter, setPairFilter] = useLocalStorageState<string>("st_trades_pair_filter", "");
 
   const q = useQuery({
-    queryKey: ["trades"],
-    queryFn: () => apiGet<any>("/api/freqtrade/trades?limit=500"),
-    refetchInterval: 10000,
+    queryKey: ["history_runs_trades"],
+    queryFn: () => apiGet<RunsResponse>("/api/history/runs?limit=40"),
+    refetchInterval: 15000,
   });
 
   const trades: Trade[] = useMemo(() => {
-    const d = q.data;
-    if (Array.isArray(d)) return d as Trade[];
-    if (d && typeof d === "object") {
-      const t = (d as any).trades;
-      if (Array.isArray(t)) return t as Trade[];
-    }
-    return [];
+    const runs = Array.isArray(q.data?.runs) ? q.data?.runs : [];
+    const latest = runs.length ? runs[0] : null;
+    if (!latest) return [];
+    const best = (latest as any)?.backtest_summary?.best_trades;
+    const worst = (latest as any)?.backtest_summary?.worst_trades;
+    const out: Trade[] = [];
+    if (Array.isArray(worst)) out.push(...(worst as Trade[]));
+    if (Array.isArray(best)) out.push(...(best as Trade[]));
+    return out;
   }, [q.data]);
 
   const filtered = useMemo(() => {
@@ -45,9 +53,11 @@ export default function Trades() {
           </div>
         </Card>
 
-        <Card title={`Trades (${filtered.length})`}>
+        <Card title={`Backtest Trade Samples (${filtered.length})`}>
           {q.isLoading ? (
             <div className="text-sm text-fg-400">Loading…</div>
+          ) : !trades.length ? (
+            <div className="text-sm text-fg-400">No backtest trade samples yet. Run a backtest to populate History.</div>
           ) : (
             <div className="overflow-auto max-h-[620px] border border-border-700 rounded-md">
               <table className="w-full text-xs font-mono">

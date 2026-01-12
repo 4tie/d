@@ -4,6 +4,7 @@ Ollama AI client for strategy analysis and trading insights
 import os
 import requests
 import json
+import re
 from typing import Dict, List, Optional, Any
 import time
 import logging
@@ -246,15 +247,16 @@ class OllamaClient:
             while self._request_queue:
                 if self._can_make_request():
                     queued_method, queued_url, queued_kwargs, queued_result_queue = self._request_queue.pop(0)
+                    self._active_requests += 1
                     try:
                         response = self._make_request(queued_method, queued_url, **queued_kwargs)
                         queued_result_queue.put({'success': True, 'response': response})
                     except Exception as e:
-                        queued_result_queue.put({'success': False, 'error': str(e)})
+                        queued_result_queue.put({'success': False, 'error': e})
                     finally:
                         self._active_requests -= 1
                 else:
-                    break
+                    time.sleep(0.05)
         
         self._request_queue.append((method, url, kwargs, result_queue))
         
@@ -268,7 +270,10 @@ class OllamaClient:
         if result['success']:
             return result['response']
         else:
-            raise RuntimeError(result['error'])
+            err = result.get('error')
+            if isinstance(err, Exception):
+                raise err
+            raise RuntimeError(str(err))
 
     def _make_request(self, method: str, url: str, **kwargs) -> requests.Response:
         """Make an HTTP request with retry logic"""
@@ -291,15 +296,11 @@ class OllamaClient:
                 
             except requests.exceptions.ConnectionError as e:
                 last_exception = e
-                if attempt < self.MAX_RETRIES:
-                    time.sleep(delay)
-                    delay *= self.RETRY_BACKOFF
+                break
                     
             except requests.exceptions.Timeout as e:
                 last_exception = e
-                if attempt < self.MAX_RETRIES:
-                    time.sleep(delay)
-                    delay *= self.RETRY_BACKOFF
+                break
                     
             except requests.exceptions.HTTPError as e:
                 # Don't retry on HTTP errors
@@ -580,6 +581,17 @@ Backtest JSON:
             raise ValueError("Invalid backtest result format")
 
         goal = (user_goal or "").strip()
+        strategy_class = "AIStrategy"
+        try:
+            m = re.search(
+                r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(.*IStrategy.*\)\s*:\s*$",
+                str(current_strategy_code or ""),
+                flags=re.MULTILINE,
+            )
+            if m:
+                strategy_class = str(m.group(1) or "").strip() or strategy_class
+        except Exception:
+            strategy_class = "AIStrategy"
         backtest_json = json.dumps(backtest_result, indent=2, ensure_ascii=False)
 
         kb_context = self._build_kb_context(
@@ -595,11 +607,13 @@ You will improve the strategy based ONLY on:
 
 Hard requirements:
 1) Output ONLY Python code (no explanations, no markdown).
-2) The strategy class MUST be named AIStrategy and inherit from IStrategy.
-3) MUST include: populate_indicators, populate_entry_trend, populate_exit_trend.
-4) MUST be syntactically valid Python.
-5) Do NOT introduce lookahead bias.
-6) Make the smallest set of changes that plausibly improves profitability AND risk-adjusted metrics.
+2) Keep the strategy class name EXACTLY as: {strategy_class}
+3) The strategy class MUST inherit from IStrategy.
+4) MUST include: populate_indicators, populate_entry_trend, populate_exit_trend.
+5) MUST be syntactically valid Python.
+6) Do NOT introduce lookahead bias.
+7) Make the smallest set of changes that plausibly improves profitability AND risk-adjusted metrics.
+8) If the code uses legacy naming (populate_buy_trend/populate_sell_trend or buy/sell columns), upgrade it to populate_entry_trend/populate_exit_trend and enter_long/exit_long.
 
 Risk-adjusted requirements:
 - Explicitly reduce tail risk and drawdown.
@@ -650,6 +664,22 @@ Backtest summary + forensics JSON:
         self.REQUEST_QUEUE_SIZE = max_queue
 
     def repair_strategy_code(self, user_idea: str, broken_code: str, error: str) -> str:
+        strategy_class = "AIStrategy"
+        try:
+            m = re.search(
+                r"^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(.*IStrategy.*\)\s*:\s*$",
+                str(broken_code or ""),
+                flags=re.MULTILINE,
+            )
+            if m:
+                strategy_class = str(m.group(1) or "").strip() or strategy_class
+        except Exception:
+            strategy_class = "AIStrategy"
+
+        kb_context = self._build_kb_context(
+            "freqtrade strategy repair\n" + str(error or "")[:1200] + "\n" + str(broken_code or "")[:1800]
+        )
+
         prompt = f"""
 You are an expert Freqtrade strategy developer.
 
@@ -658,15 +688,21 @@ Fix it.
 
 Hard requirements:
 1) Output ONLY Python code (no explanations, no markdown).
-2) The strategy class MUST be named AIStrategy and inherit from IStrategy.
+2) Keep the strategy class name EXACTLY as: {strategy_class}
+3) The strategy class MUST inherit from IStrategy.
 3) MUST include: populate_indicators, populate_entry_trend, populate_exit_trend.
 4) MUST be syntactically valid Python.
+5) If the code uses legacy naming (populate_buy_trend/populate_sell_trend or buy/sell columns), upgrade it to populate_entry_trend/populate_exit_trend and enter_long/exit_long.
+6) Do not use lookahead bias.
 
 User idea:
 {user_idea}
 
 Validation error:
 {error}
+
+Knowledge base context (retrieved from local docs):
+{kb_context}
 
 Broken code:
 {broken_code}
@@ -920,7 +956,38 @@ Knowledge base context (retrieved):
         
         # Check if we can make the request or need to queue it
         if not self._can_make_request():
-            return self._queue_request('POST', f"{self.base_url}/api/generate", json=payload)
+            try:
+                response = self._queue_request('POST', f"{self.base_url}/api/generate", json=payload)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                self._track_performance('generate', False, time.time() - start_time, len(prompt))
+                endpoint = f"{self.base_url}/api/generate"
+                err_name = type(e).__name__
+                hint = (
+                    "Hint: ensure Ollama is running ('ollama serve'), the Ollama URL/model in Settings are correct, "
+                    "and the model is pulled ('ollama pull <model>')."
+                )
+                raise RuntimeError(
+                    f"Ollama request failed (model='{self.model}', url='{endpoint}', "
+                    f"timeouts=({self.CONNECTION_TIMEOUT},{self.READ_TIMEOUT})s, attempts=1): "
+                    f"{err_name}: {e}. {hint}"
+                ) from e
+
+            result: Any = response.json()
+            if not isinstance(result, dict):
+                self._track_performance('generate', False, time.time() - start_time, len(prompt))
+                raise RuntimeError("Unexpected Ollama response format")
+
+            text = result.get('response')
+            if not isinstance(text, str) or not text.strip():
+                self._track_performance('generate', False, time.time() - start_time, len(prompt))
+                raise RuntimeError("Ollama returned empty response")
+
+            if use_cache:
+                self._cache_response(prompt, text)
+
+            duration = time.time() - start_time
+            self._track_performance('generate', True, duration, len(prompt))
+            return text
         
         self._active_requests += 1
         
@@ -954,16 +1021,12 @@ Knowledge base context (retrieved):
                 except requests.exceptions.ConnectionError as e:
                     last_exception = e
                     logger.warning(f"Ollama connection attempt {attempt + 1} failed: {e}")
-                    if attempt < self.MAX_RETRIES:
-                        time.sleep(delay)
-                        delay *= self.RETRY_BACKOFF
+                    break
                         
                 except requests.exceptions.Timeout as e:
                     last_exception = e
                     logger.warning(f"Ollama timeout on attempt {attempt + 1}: {e}")
-                    if attempt < self.MAX_RETRIES:
-                        time.sleep(delay)
-                        delay *= self.RETRY_BACKOFF
+                    break
                         
                 except RuntimeError as e:
                     # Don't retry on validation errors
@@ -977,10 +1040,20 @@ Knowledge base context (retrieved):
                         delay *= self.RETRY_BACKOFF
             
             self._track_performance('generate', False, time.time() - start_time, len(prompt))
-            raise RuntimeError(f"Ollama request failed after {self.MAX_RETRIES + 1} attempts: {last_exception}")
+            endpoint = f"{self.base_url}/api/generate"
+            err_name = type(last_exception).__name__ if last_exception is not None else "UnknownError"
+            attempts = attempt + 1
+            hint = (
+                "Hint: ensure Ollama is running ('ollama serve'), the Ollama URL/model in Settings are correct, "
+                "and the model is pulled ('ollama pull <model>')."
+            )
+            raise RuntimeError(
+                f"Ollama request failed (model='{self.model}', url='{endpoint}', "
+                f"timeouts=({self.CONNECTION_TIMEOUT},{self.READ_TIMEOUT})s, attempts={attempts}): "
+                f"{err_name}: {last_exception}. {hint}"
+            )
             
         finally:
             self._active_requests -= 1
             # Process any queued requests
-            if self._request_queue:
-                self._queue_request('POST', f"{self.base_url}/api/generate", json=payload)
+            pass

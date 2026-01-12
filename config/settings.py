@@ -28,6 +28,15 @@ def _default_app_config() -> dict:
             "user": "",
             "password": "",
         },
+        "ai": {
+            "provider": "ollama",
+        },
+        "openrouter": {
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": "",
+            "model": "",
+            "options": {},
+        },
         "strategy": {
             "directory": "./user_data/strategies",
         },

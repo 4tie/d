@@ -6,10 +6,118 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime
 from typing import Any, Dict, Optional, List, Tuple
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_read_json_file(path: str) -> Any:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _load_backtest_json_from_zip(zip_path: str) -> Tuple[Dict[str, Any], str]:
+    import zipfile
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        members = list(zf.namelist())
+        json_members = [m for m in members if isinstance(m, str) and m.lower().endswith(".json") and "_config.json" not in m.lower()]
+        if not json_members:
+            raise RuntimeError(f"Backtest zip contains no JSON results: {members}")
+        member = json_members[0]
+        raw = zf.read(member)
+        data = json.loads(raw.decode("utf-8"))
+        if not isinstance(data, dict):
+            raise RuntimeError("Backtest output JSON has unexpected format (expected object).")
+        return data, member
+
+
+def _find_backtest_zip_from_output(out_dir: str, *, stdout: str, stderr: str, started_ts: float) -> Optional[str]:
+    meta_path = None
+    m = re.search(r'dumping json to\s+"([^"]+\\.meta\\.json)"', stderr or "", flags=re.IGNORECASE)
+    if m:
+        meta_path = str(m.group(1) or "").strip()
+    if meta_path and os.path.exists(meta_path):
+        zip_guess = meta_path.replace(".meta.json", ".zip")
+        if os.path.exists(zip_guess):
+            return zip_guess
+
+    last_path = os.path.join(out_dir, ".last_result.json")
+    if os.path.exists(last_path):
+        try:
+            d = _safe_read_json_file(last_path)
+            if isinstance(d, dict):
+                latest = d.get("latest_backtest")
+                if isinstance(latest, str) and latest.strip():
+                    cand = os.path.join(out_dir, os.path.basename(latest.strip()))
+                    if os.path.exists(cand):
+                        try:
+                            if os.path.getmtime(cand) >= (started_ts - 2):
+                                return cand
+                        except Exception:
+                            return cand
+        except Exception:
+            pass
+
+    try:
+        cands = []
+        for fn in os.listdir(out_dir):
+            if not fn.lower().endswith(".zip"):
+                continue
+            p = os.path.join(out_dir, fn)
+            try:
+                mtime = os.path.getmtime(p)
+            except Exception:
+                continue
+            if mtime >= (started_ts - 2):
+                cands.append((mtime, p))
+        cands.sort(key=lambda x: x[0], reverse=True)
+        if cands:
+            return cands[0][1]
+    except Exception:
+        pass
+
+    return None
+
+
+def load_backtest_result_file(result_file: str, *, result_kind: Optional[str] = None, zip_member: Optional[str] = None) -> Dict[str, Any]:
+    if not isinstance(result_file, str) or not result_file.strip():
+        raise ValueError("result_file is required")
+
+    path = result_file.strip()
+    if not os.path.exists(path):
+        raise RuntimeError(f"Backtest result file not found: {path}")
+
+    kind = (result_kind or "").strip().lower()
+    if not kind:
+        kind = "zip" if path.lower().endswith(".zip") else "json"
+
+    if kind == "zip":
+        import zipfile
+
+        with zipfile.ZipFile(path, "r") as zf:
+            members = list(zf.namelist())
+            member = None
+            if isinstance(zip_member, str) and zip_member.strip() and zip_member.strip() in members:
+                member = zip_member.strip()
+            else:
+                json_members = [m for m in members if isinstance(m, str) and m.lower().endswith(".json") and "_config.json" not in m.lower()]
+                if json_members:
+                    member = json_members[0]
+            if not member:
+                raise RuntimeError(f"Backtest zip contains no JSON results: {members}")
+            raw = zf.read(member)
+            data = json.loads(raw.decode("utf-8"))
+            if not isinstance(data, dict):
+                raise RuntimeError("Backtest output JSON has unexpected format (expected object).")
+            return data
+
+    data_any = _safe_read_json_file(path)
+    if not isinstance(data_any, dict):
+        raise RuntimeError("Backtest output JSON has unexpected format (expected object).")
+    return data_any
 
 
 def _project_root() -> str:
@@ -40,7 +148,7 @@ def _deep_find_first(obj: Any, predicate) -> Optional[Any]:
 
 
 def _extract_trade_profit_pct(trade: Dict[str, Any]) -> Optional[float]:
-    for k in ("profit_pct", "close_profit_pct", "profit_percent", "profit_ratio"):
+    for k in ("profit_pct", "close_profit_pct", "profit_percent"):
         v = trade.get(k)
         if v is None:
             continue
@@ -48,6 +156,13 @@ def _extract_trade_profit_pct(trade: Dict[str, Any]) -> Optional[float]:
             return float(v)
         except Exception:
             continue
+
+    v = trade.get("profit_ratio")
+    if v is not None:
+        try:
+            return float(v) * 100.0
+        except Exception:
+            pass
     return None
 
 
@@ -97,7 +212,11 @@ def summarize_backtest_data(backtest_json: Dict[str, Any], max_trades: int = 30)
     ):
         v = _deep_find_first(backtest_json, lambda x: isinstance(x, dict) and k in x)
         if isinstance(v, dict) and k in v:
-            metrics[k] = v.get(k)
+            val = v.get(k)
+            if k == "trades" and isinstance(val, list):
+                metrics[k] = len(val)
+            else:
+                metrics[k] = val
 
     # Build top/worst trades from the detected trade list.
     ranked: List[Tuple[float, Dict[str, Any]]] = []
@@ -184,9 +303,28 @@ def build_trade_forensics(backtest_json: Dict[str, Any], max_groups: int = 8) ->
     if isinstance(trades_any, list):
         trades = [t for t in trades_any if isinstance(t, dict)]
 
+    per_day_counts: Dict[str, int] = {}
+    day_min = None
+    day_max = None
+
+    def _trade_date(t: Dict[str, Any]):
+        for k in ("close_date", "open_date", "close_date_utc", "open_date_utc"):
+            v = t.get(k)
+            if not isinstance(v, str) or not v.strip():
+                continue
+            m = re.match(r"^(\d{4}-\d{2}-\d{2})", v.strip())
+            if not m:
+                continue
+            try:
+                return datetime.strptime(m.group(1), "%Y-%m-%d").date()
+            except Exception:
+                continue
+        return None
+
     # Extract per-trade profit in pct terms (best-effort)
     profits: List[float] = []
     profit_abs: List[float] = []
+    fee_roundtrip_pct: List[float] = []
     tiny_edge_count = 0
     win_count = 0
     loss_count = 0
@@ -196,6 +334,15 @@ def build_trade_forensics(backtest_json: Dict[str, Any], max_groups: int = 8) ->
     per_enter: Dict[str, List[float]] = {}
 
     for t in trades:
+        d = _trade_date(t)
+        if d is not None:
+            ds = d.isoformat()
+            per_day_counts[ds] = int(per_day_counts.get(ds, 0) or 0) + 1
+            if day_min is None or d < day_min:
+                day_min = d
+            if day_max is None or d > day_max:
+                day_max = d
+
         p = _extract_trade_profit_pct(t)
         if p is None:
             # Some exports store only profit_abs
@@ -229,11 +376,45 @@ def build_trade_forensics(backtest_json: Dict[str, Any], max_groups: int = 8) ->
         if pa2 is not None:
             profit_abs.append(pa2)
 
+        fo = _safe_float(t.get("fee_open"))
+        fc = _safe_float(t.get("fee_close"))
+        if fo is not None and fc is not None:
+            fee_roundtrip_pct.append((fo + fc) * 100.0)
+
+    range_days = None
+    avg_trades_per_day = None
+    if day_min is not None and day_max is not None:
+        try:
+            range_days = int((day_max - day_min).days) + 1
+        except Exception:
+            range_days = None
+    if isinstance(range_days, int) and range_days > 0:
+        avg_trades_per_day = len(trades) / float(range_days)
+
+    min_trades_in_day = None
+    max_trades_in_day = None
+    if per_day_counts:
+        try:
+            counts = list(per_day_counts.values())
+            min_trades_in_day = int(min(counts)) if counts else None
+            max_trades_in_day = int(max(counts)) if counts else None
+        except Exception:
+            min_trades_in_day = None
+            max_trades_in_day = None
+
     n = len(profits)
     if n == 0:
         return {
             "metadata": summary.get("metadata"),
             "trades_detected": len(trades),
+            "trade_frequency": {
+                "range_start": day_min.isoformat() if day_min is not None else None,
+                "range_end": day_max.isoformat() if day_max is not None else None,
+                "range_days": range_days,
+                "avg_trades_per_day": avg_trades_per_day,
+                "min_trades_in_a_day": min_trades_in_day,
+                "max_trades_in_a_day": max_trades_in_day,
+            },
             "error": "No profit_pct values detected in trades. Cannot compute detailed forensics.",
         }
 
@@ -367,6 +548,21 @@ def build_trade_forensics(backtest_json: Dict[str, Any], max_groups: int = 8) ->
     p05 = profits_sorted[max(0, int(0.05 * (n - 1)))]
     p95 = profits_sorted[max(0, int(0.95 * (n - 1)))]
 
+    abs_profits_sorted = sorted(abs(p) for p in profits)
+    median_abs_profit_pct = _median(abs_profits_sorted)
+
+    median_roundtrip_fee_pct = _median(sorted(fee_roundtrip_pct)) if fee_roundtrip_pct else None
+    edge_to_fee_ratio = (
+        (median_abs_profit_pct / median_roundtrip_fee_pct)
+        if isinstance(median_roundtrip_fee_pct, (int, float)) and median_roundtrip_fee_pct > 0
+        else None
+    )
+    fee_dominated_fraction = (
+        (sum(1 for p in profits if abs(p) <= float(median_roundtrip_fee_pct)) / n)
+        if isinstance(median_roundtrip_fee_pct, (int, float)) and median_roundtrip_fee_pct > 0 and n > 0
+        else None
+    )
+
     # Heuristics to explain paradoxes ("profit but losing")
     diagnostics: List[str] = []
     if winrate > 0.55 and expectancy < 0:
@@ -375,6 +571,8 @@ def build_trade_forensics(backtest_json: Dict[str, Any], max_groups: int = 8) ->
         diagnostics.append("Low winrate but positive expectancy: winners outweigh losers (trend-following profile).")
     if tiny_edge_count / n > 0.60:
         diagnostics.append("Most trades are tiny outcomes (<= 0.10%): strategy edge may be fee/slippage dominated.")
+    if fee_dominated_fraction is not None and fee_dominated_fraction > 0.60:
+        diagnostics.append("Most trades have abs profit <= median roundtrip fees: fee/slippage dominated.")
     if profit_factor is not None and profit_factor < 1.0:
         diagnostics.append("Profit factor < 1: gross losses exceed gross gains.")
     if p05 < -5:
@@ -409,6 +607,14 @@ def build_trade_forensics(backtest_json: Dict[str, Any], max_groups: int = 8) ->
         "metadata": summary.get("metadata"),
         "trades_detected": len(trades),
         "trades_scored": n,
+        "trade_frequency": {
+            "range_start": day_min.isoformat() if day_min is not None else None,
+            "range_end": day_max.isoformat() if day_max is not None else None,
+            "range_days": range_days,
+            "avg_trades_per_day": avg_trades_per_day,
+            "min_trades_in_a_day": min_trades_in_day,
+            "max_trades_in_a_day": max_trades_in_day,
+        },
         "winrate": winrate,
         "avg_win": avg_win,
         "avg_loss": avg_loss,
@@ -418,6 +624,12 @@ def build_trade_forensics(backtest_json: Dict[str, Any], max_groups: int = 8) ->
         "median_profit_pct": _median(profits_sorted),
         "p05_profit_pct": p05,
         "p95_profit_pct": p95,
+        "fee_sensitivity": {
+            "median_roundtrip_fee_pct": median_roundtrip_fee_pct,
+            "median_abs_profit_pct": median_abs_profit_pct,
+            "edge_to_fee_ratio": edge_to_fee_ratio,
+            "fee_dominated_fraction": fee_dominated_fraction,
+        },
         "tiny_edge_fraction": tiny_edge_count / n,
         "max_win_streak": _max_streak(+1),
         "max_loss_streak": _max_streak(-1),
@@ -675,6 +887,7 @@ def run_backtest(
 
         logger.info("Running backtest: %s", " ".join(cmd))
 
+        started_ts = time.time()
         proc = subprocess.run(
             cmd,
             cwd=root,
@@ -691,21 +904,32 @@ def run_backtest(
                 f"Backtest failed (exit={proc.returncode}).\nSTDOUT:\n{stdout[-4000:]}\n\nSTDERR:\n{stderr[-4000:]}"
             )
 
-        if not os.path.exists(out_file):
-            raise RuntimeError(
-                f"Backtest finished but result file not found: {out_file}\nSTDOUT:\n{stdout[-4000:]}\n\nSTDERR:\n{stderr[-4000:]}"
-            )
+        result_kind = "json"
+        result_path = out_file
+        zip_member = None
+        data: Dict[str, Any]
 
-        with open(out_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        if not isinstance(data, dict):
-            raise RuntimeError("Backtest output JSON has unexpected format (expected object).")
+        if os.path.exists(out_file):
+            data_any = _safe_read_json_file(out_file)
+            if not isinstance(data_any, dict):
+                raise RuntimeError("Backtest output JSON has unexpected format (expected object).")
+            data = data_any
+        else:
+            zip_path = _find_backtest_zip_from_output(out_dir, stdout=stdout, stderr=stderr, started_ts=started_ts)
+            if not zip_path:
+                raise RuntimeError(
+                    f"Backtest finished but result file not found: {out_file}\nSTDOUT:\n{stdout[-4000:]}\n\nSTDERR:\n{stderr[-4000:]}"
+                )
+            data, zip_member = _load_backtest_json_from_zip(zip_path)
+            result_kind = "zip"
+            result_path = zip_path
 
         return {
             "strategy_class": class_name,
             "strategy_file": strategy_file,
-            "result_file": out_file,
+            "result_file": result_path,
+            "result_kind": result_kind,
+            "zip_member": zip_member,
             "stdout": stdout,
             "stderr": stderr,
             "data": data,

@@ -203,65 +203,113 @@ function Show-Menu {
     return (Read-Host "Enter 1, 2, or 3")
 }
 
+function Get-PortConfiguration {
+    Write-Host "" 
+    Write-Host "Port Configuration" -ForegroundColor Cyan
+    $useDefaults = Read-Host "Use default ports? (Backend: 8000, Frontend: 5173) [Y/n]"
+    
+    if ($useDefaults -match '^(n|no)$') {
+        $backendPort = Read-Host "Enter backend port (default: 8000)"
+        if (-not $backendPort) { $backendPort = "8000" }
+        
+        $frontendPort = Read-Host "Enter frontend port (default: 5173)"
+        if (-not $frontendPort) { $frontendPort = "5173" }
+        
+        return @{
+            BackendPort = [int]$backendPort
+            FrontendPort = [int]$frontendPort
+        }
+    }
+    
+    return @{
+        BackendPort = 8000
+        FrontendPort = 5173
+    }
+}
+
 function Start-NewTerminal([string]$ShellExe, [string]$Title, [string]$Command) {
     $cmd = "`$Host.UI.RawUI.WindowTitle = '$Title'; $Command"
     Start-Process -FilePath $ShellExe -ArgumentList @('-NoExit', '-Command', $cmd) | Out-Null
 }
 
-function Launch-Tk([string]$ShellExe, [string]$RepoRoot, [string]$PythonExe) {
+function Launch-Tk([string]$ShellExe, [string]$RepoRoot, [string]$PythonExe, [hashtable]$Ports) {
     Write-Host "[4/4] Launching Tkinter UI..." -ForegroundColor Cyan
+    Write-Host "Note: Tkinter UI uses backend port: $($Ports.BackendPort)" -ForegroundColor DarkGray
     $script = Join-Path $RepoRoot 'ui\tk\main_tk.py'
     Assert-File $script "Tk UI entrypoint not found: $script"
 
     $cmd = "Set-Location `"$RepoRoot`"; & `"$PythonExe`" `"$script`""
     Start-NewTerminal -ShellExe $ShellExe -Title 'SmartTrade TK' -Command $cmd
+    Write-Host "Tkinter UI launched. Window should appear shortly." -ForegroundColor Green
 }
 
-function Launch-PyQt([string]$ShellExe, [string]$RepoRoot, [string]$PythonExe) {
+function Launch-PyQt([string]$ShellExe, [string]$RepoRoot, [string]$PythonExe, [hashtable]$Ports) {
     Write-Host "[4/4] Launching PyQt6 UI..." -ForegroundColor Cyan
+    Write-Host "Note: PyQt6 UI uses backend port: $($Ports.BackendPort)" -ForegroundColor DarkGray
     $script = Join-Path $RepoRoot 'main.py'
     Assert-File $script "PyQt6 UI entrypoint not found: $script"
 
     $cmd = "Set-Location `"$RepoRoot`"; & `"$PythonExe`" `"$script`""
     Start-NewTerminal -ShellExe $ShellExe -Title 'SmartTrade PyQt6' -Command $cmd
+    Write-Host "PyQt6 UI launched. Window should appear shortly." -ForegroundColor Green
 }
 
-function Launch-Web([string]$ShellExe, [string]$RepoRoot, [string]$PythonExe, [string]$ClientDir) {
+function Launch-Web([string]$ShellExe, [string]$RepoRoot, [string]$PythonExe, [string]$ClientDir, [hashtable]$Ports) {
     Write-Host "[4/4] Launching Web UI (backend + frontend)..." -ForegroundColor Cyan
 
     $api = Join-Path $RepoRoot 'web_api.py'
     Assert-File $api "Web API entrypoint not found: $api"
 
-    $backendCmd = "Set-Location `"$RepoRoot`"; & `"$PythonExe`" -m uvicorn web_api:app --host 127.0.0.1 --port 8000"
-    $frontendCmd = "Set-Location `"$RepoRoot`"; npm --prefix `"$ClientDir`" run dev"
+    $backendPort = $Ports.BackendPort
+    $frontendPort = $Ports.FrontendPort
+    
+    $backendCmd = "Set-Location `"$RepoRoot`"; & `"$PythonExe`" -m uvicorn web_api:app --host 127.0.0.1 --port $backendPort"
+    $frontendCmd = "Set-Location `"$RepoRoot`"; npm --prefix `"$ClientDir`" run dev -- --port $frontendPort"
 
-    $backendAlready = Wait-HttpReady -Url "http://127.0.0.1:8000/api/health" -TimeoutSeconds 1
+    $backendUrl = "http://127.0.0.1:$backendPort"
+    $frontendUrl = "http://127.0.0.1:$frontendPort"
+
+    $backendAlready = Wait-HttpReady -Url "$backendUrl/api/health" -TimeoutSeconds 1
     if ($backendAlready) {
-        Write-Host "Backend already running: http://127.0.0.1:8000" -ForegroundColor DarkGreen
+        Write-Host "Backend already running: $backendUrl" -ForegroundColor DarkGreen
     } else {
+        Write-Host "Starting backend on port $backendPort..." -ForegroundColor Cyan
         Start-NewTerminal -ShellExe $ShellExe -Title 'SmartTrade Web Backend' -Command $backendCmd
     }
 
-    $frontendAlready = Wait-HttpReady -Url "http://127.0.0.1:5173/" -TimeoutSeconds 1
+    $frontendAlready = Wait-HttpReady -Url "$frontendUrl/" -TimeoutSeconds 1
     if ($frontendAlready) {
-        Write-Host "Frontend already running: http://127.0.0.1:5173" -ForegroundColor DarkGreen
+        Write-Host "Frontend already running: $frontendUrl" -ForegroundColor DarkGreen
     } else {
+        Write-Host "Starting frontend on port $frontendPort..." -ForegroundColor Cyan
         Start-NewTerminal -ShellExe $ShellExe -Title 'SmartTrade Web Frontend' -Command $frontendCmd
     }
 
     try {
-        $backendOk = Wait-HttpReady -Url "http://127.0.0.1:8000/api/health" -TimeoutSeconds 25
+        Write-Host "Waiting for services to start..." -ForegroundColor Cyan
+        $backendOk = Wait-HttpReady -Url "$backendUrl/api/health" -TimeoutSeconds 25
         if (-not $backendOk) {
-            Write-Host "Backend not ready yet (http://127.0.0.1:8000). Opening browser anyway." -ForegroundColor Yellow
+            Write-Host "Backend not ready yet ($backendUrl). Opening browser anyway." -ForegroundColor Yellow
+        } else {
+            Write-Host "Backend ready: $backendUrl" -ForegroundColor Green
         }
 
-        $frontendOk = Wait-HttpReady -Url "http://127.0.0.1:5173/" -TimeoutSeconds 25
+        $frontendOk = Wait-HttpReady -Url "$frontendUrl/" -TimeoutSeconds 25
         if (-not $frontendOk) {
-            Write-Host "Frontend not ready yet (http://127.0.0.1:5173). Opening browser anyway." -ForegroundColor Yellow
+            Write-Host "Frontend not ready yet ($frontendUrl). Opening browser anyway." -ForegroundColor Yellow
+        } else {
+            Write-Host "Frontend ready: $frontendUrl" -ForegroundColor Green
         }
 
-        Start-Process "http://127.0.0.1:5173/" | Out-Null
-        Start-Process "http://127.0.0.1:8000/docs" | Out-Null
+        Write-Host "Opening browser..." -ForegroundColor Cyan
+        Start-Process "$frontendUrl/" | Out-Null
+        Start-Process "$backendUrl/docs" | Out-Null
+        
+        Write-Host "" 
+        Write-Host "Web UI is ready!" -ForegroundColor Green
+        Write-Host "  Frontend: $frontendUrl" -ForegroundColor White
+        Write-Host "  Backend:  $backendUrl" -ForegroundColor White
+        Write-Host "  API Docs: $backendUrl/docs" -ForegroundColor White
     } catch {
         return
     }
@@ -272,6 +320,7 @@ Set-Location -LiteralPath $repoRoot
 
 Write-Host "SmartTrade Launcher" -ForegroundColor Green
 Write-Host "Repo: $repoRoot" -ForegroundColor DarkGray
+Write-Host "" 
 
 $shellExe = Select-ShellExe
 $pythonExe = Validate-Python -RepoRoot $repoRoot
@@ -289,18 +338,25 @@ if ($CheckOnly) {
     exit 0
 }
 
+# Get port configuration
+$ports = Get-PortConfiguration
+Write-Host "Using Backend Port: $($ports.BackendPort)" -ForegroundColor DarkGray
+Write-Host "Using Frontend Port: $($ports.FrontendPort)" -ForegroundColor DarkGray
+Write-Host "[3/4] Port configuration complete." -ForegroundColor Cyan
+Write-Host "" 
+
 switch ($choice) {
     '1' {
-        Launch-Tk -ShellExe $shellExe -RepoRoot $repoRoot -PythonExe $pythonExe
+        Launch-Tk -ShellExe $shellExe -RepoRoot $repoRoot -PythonExe $pythonExe -Ports $ports
         break
     }
     '2' {
-        Launch-PyQt -ShellExe $shellExe -RepoRoot $repoRoot -PythonExe $pythonExe
+        Launch-PyQt -ShellExe $shellExe -RepoRoot $repoRoot -PythonExe $pythonExe -Ports $ports
         break
     }
     '3' {
         $clientDir = Validate-Node -RepoRoot $repoRoot
-        Launch-Web -ShellExe $shellExe -RepoRoot $repoRoot -PythonExe $pythonExe -ClientDir $clientDir
+        Launch-Web -ShellExe $shellExe -RepoRoot $repoRoot -PythonExe $pythonExe -ClientDir $clientDir -Ports $ports
         break
     }
     default {

@@ -194,6 +194,76 @@ class AIPerformanceStore:
                 results.append(d)
             return results
 
+    def get_run_by_id(self, run_id: int) -> Dict[str, Any]:
+        if not isinstance(run_id, int) or run_id <= 0:
+            raise ValueError("run_id must be a positive integer")
+
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM strategy_runs WHERE id = ?", (run_id,)).fetchone()
+            if not row:
+                raise RuntimeError("run_id not found")
+
+            d = dict(row)
+            if d.get("backtest_summary_json"):
+                try:
+                    d["backtest_summary"] = json.loads(d["backtest_summary_json"])
+                except Exception:
+                    d["backtest_summary"] = {}
+            if d.get("trade_forensics_json"):
+                try:
+                    d["trade_forensics"] = json.loads(d["trade_forensics_json"])
+                except Exception:
+                    d["trade_forensics"] = {}
+            if d.get("market_context_json"):
+                try:
+                    d["market_context"] = json.loads(d["market_context_json"])
+                except Exception:
+                    d["market_context"] = {}
+            if d.get("extra_json"):
+                try:
+                    d["extra"] = json.loads(d["extra_json"])
+                except Exception:
+                    d["extra"] = {}
+
+            return d
+
+    def get_latest_run_for_hash(self, strategy_hash: str) -> Optional[Dict[str, Any]]:
+        if not isinstance(strategy_hash, str) or not strategy_hash.strip():
+            raise ValueError("strategy_hash must be a non-empty string")
+
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM strategy_runs WHERE strategy_hash = ? ORDER BY ts DESC, id DESC LIMIT 1",
+                (strategy_hash.strip(),),
+            ).fetchone()
+            if not row:
+                return None
+
+            d = dict(row)
+            if d.get("backtest_summary_json"):
+                try:
+                    d["backtest_summary"] = json.loads(d["backtest_summary_json"])
+                except Exception:
+                    d["backtest_summary"] = {}
+            if d.get("trade_forensics_json"):
+                try:
+                    d["trade_forensics"] = json.loads(d["trade_forensics_json"])
+                except Exception:
+                    d["trade_forensics"] = {}
+            if d.get("market_context_json"):
+                try:
+                    d["market_context"] = json.loads(d["market_context_json"])
+                except Exception:
+                    d["market_context"] = {}
+            if d.get("extra_json"):
+                try:
+                    d["extra"] = json.loads(d["extra_json"])
+                except Exception:
+                    d["extra"] = {}
+            return d
+
     def get_recent_param_suggestions(self, limit: int = 200) -> Dict[str, List[str]]:
         if not isinstance(limit, int) or limit < 1 or limit > 5000:
             raise ValueError("limit must be an integer between 1 and 5000")

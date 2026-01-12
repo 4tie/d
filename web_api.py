@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from api.client import FreqtradeClient
 from config.settings import APP_CONFIG_PATH, BOT_CONFIG_PATH, STRATEGY_DIR, load_app_config
 from core.strategy_service import StrategyService
-from utils.backtest_runner import build_trade_forensics, download_data, run_backtest, summarize_backtest_data
+from utils.backtest_runner import build_trade_forensics, download_data, load_backtest_result_file, run_backtest, summarize_backtest_data
 from utils.performance_store import AIPerformanceStore
 
 
@@ -59,6 +59,11 @@ class GenerateStrategyRequest(BaseModel):
     prompt: str
 
 
+class RepairStrategyRequest(BaseModel):
+    code: str
+    prompt: str = ""
+
+
 class SaveStrategyRequest(BaseModel):
     code: str
     filename: str = "AIStrategy.py"
@@ -71,6 +76,30 @@ class RefineStrategyRequest(BaseModel):
     timerange: Optional[str] = None
     timeframe: Optional[str] = None
     pairs: Optional[str] = None
+
+
+class OptimizeStrategyRequest(BaseModel):
+    strategy_code: str
+    selected_filename: str
+    user_goal: str = ""
+    max_iterations: int = 3
+    timerange: Optional[str] = None
+    timeframe: Optional[str] = None
+    pairs: Optional[str] = None
+    fee: Optional[float] = None
+    dry_run_wallet: Optional[float] = None
+    max_open_trades: Optional[int] = None
+    min_trades_per_day: Optional[float] = None
+    require_min_trades_per_day: bool = False
+    max_fee_dominated_fraction: Optional[float] = None
+    min_edge_to_fee_ratio: Optional[float] = None
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: Optional[List[Dict[str, Any]]] = None
+    strategy_code: Optional[str] = None
+    context: Optional[Dict[str, Any]] = None
 
 
 class RestoreStrategyRequest(BaseModel):
@@ -497,6 +526,200 @@ def strategy_validate(payload: Dict[str, Any]) -> Dict[str, Any]:
     return {"ok": bool(ok), "error": str(err or "")}
 
 
+def _job_optimize_strategy(job: _Job, req: OptimizeStrategyRequest) -> Dict[str, Any]:
+    if not isinstance(req.strategy_code, str) or not req.strategy_code.strip():
+        raise ValueError("strategy_code is required")
+
+    selected = str(req.selected_filename or "").strip()
+    if not selected:
+        raise ValueError("selected_filename is required")
+
+    file_view = None
+    try:
+        file_view = state.read_strategy_file(selected)
+    except HTTPException as e:
+        raise ValueError(f"selected strategy file not found: {selected} ({e.detail})")
+    except Exception as e:
+        raise ValueError(f"failed to read selected strategy file: {selected} ({e})")
+
+    disk_code = file_view.get("content") if isinstance(file_view, dict) else None
+    if not isinstance(disk_code, str) or not disk_code.strip():
+        raise ValueError(f"selected strategy file has no content: {selected}")
+
+    if req.max_iterations < 1 or req.max_iterations > 5:
+        raise ValueError("max_iterations must be between 1 and 5")
+
+    fee = None
+    if req.fee is not None:
+        try:
+            fee = float(req.fee)
+        except Exception:
+            raise ValueError("fee must be a number")
+        if fee < 0 or fee > 0.05:
+            raise ValueError("fee must be between 0 and 0.05")
+
+    dry_run_wallet = None
+    if req.dry_run_wallet is not None:
+        try:
+            dry_run_wallet = float(req.dry_run_wallet)
+        except Exception:
+            raise ValueError("dry_run_wallet must be a number")
+        if dry_run_wallet <= 0:
+            raise ValueError("dry_run_wallet must be > 0")
+
+    max_open_trades = None
+    if req.max_open_trades is not None:
+        try:
+            max_open_trades = int(req.max_open_trades)
+        except Exception:
+            raise ValueError("max_open_trades must be an integer")
+        if max_open_trades < 0:
+            raise ValueError("max_open_trades must be >= 0")
+
+    min_trades_per_day = None
+    if req.min_trades_per_day is not None:
+        try:
+            min_trades_per_day = float(req.min_trades_per_day)
+        except Exception:
+            raise ValueError("min_trades_per_day must be a number")
+        if min_trades_per_day < 0:
+            raise ValueError("min_trades_per_day must be >= 0")
+
+    max_fee_dominated_fraction = None
+    if req.max_fee_dominated_fraction is not None:
+        try:
+            max_fee_dominated_fraction = float(req.max_fee_dominated_fraction)
+        except Exception:
+            raise ValueError("max_fee_dominated_fraction must be a number")
+        if max_fee_dominated_fraction < 0 or max_fee_dominated_fraction > 1:
+            raise ValueError("max_fee_dominated_fraction must be between 0 and 1")
+
+    min_edge_to_fee_ratio = None
+    if req.min_edge_to_fee_ratio is not None:
+        try:
+            min_edge_to_fee_ratio = float(req.min_edge_to_fee_ratio)
+        except Exception:
+            raise ValueError("min_edge_to_fee_ratio must be a number")
+        if min_edge_to_fee_ratio < 0:
+            raise ValueError("min_edge_to_fee_ratio must be >= 0")
+
+    job.append_log("Starting AI optimize loop")
+
+    res = state.strategy_service.optimize_strategy_with_backtest_loop(
+        strategy_code=disk_code,
+        selected_filename=selected,
+        user_goal=req.user_goal,
+        max_iterations=req.max_iterations,
+        timerange=req.timerange,
+        timeframe=req.timeframe,
+        pairs=req.pairs,
+        fee=fee,
+        dry_run_wallet=dry_run_wallet,
+        max_open_trades=max_open_trades,
+        min_trades_per_day=min_trades_per_day,
+        require_min_trades_per_day=bool(req.require_min_trades_per_day),
+        max_fee_dominated_fraction=max_fee_dominated_fraction,
+        min_edge_to_fee_ratio=min_edge_to_fee_ratio,
+        job=job,
+    )
+    if not isinstance(res, dict):
+        raise RuntimeError("optimize_strategy_with_backtest_loop returned invalid result")
+    return res
+
+
+@app.post("/api/ai/strategy/optimize")
+def ai_strategy_optimize(req: OptimizeStrategyRequest) -> Dict[str, Any]:
+    if not isinstance(req.strategy_code, str) or not req.strategy_code.strip():
+        raise HTTPException(status_code=400, detail="strategy_code is required")
+    if not isinstance(req.selected_filename, str) or not req.selected_filename.strip():
+        raise HTTPException(status_code=400, detail="selected_filename is required")
+    if req.max_iterations < 1 or req.max_iterations > 5:
+        raise HTTPException(status_code=400, detail="max_iterations must be between 1 and 5")
+
+    job = state.create_job(kind="ai_optimize", target=_job_optimize_strategy, args=(req,), kwargs={})
+    return {"job_id": job.id}
+
+
+@app.post("/api/ai/chat")
+def ai_chat(req: ChatRequest) -> Dict[str, Any]:
+    if not isinstance(req.message, str) or not req.message.strip():
+        raise HTTPException(status_code=400, detail="message is required")
+
+    ctx_in: Dict[str, Any] = req.context if isinstance(req.context, dict) else {}
+    selected = str(ctx_in.get("selected_filename") or "").strip()
+
+    disk_code: str | None = None
+    strategy_hash: str | None = None
+
+    if selected:
+        try:
+            file_view = state.read_strategy_file(selected)
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+        disk_code = file_view.get("content") if isinstance(file_view, dict) else None
+        strategy_hash = file_view.get("strategy_hash") if isinstance(file_view, dict) else None
+
+        if not isinstance(disk_code, str) or not disk_code.strip():
+            raise HTTPException(status_code=400, detail=f"selected strategy file has no content: {selected}")
+
+    ctx = dict(ctx_in)
+    if strategy_hash:
+        ctx["strategy_hash"] = strategy_hash
+        try:
+            latest = state.performance_store.get_latest_run_for_hash(strategy_hash)
+            if latest:
+                ctx["last_run_type"] = latest.get("run_type")
+                ctx["last_run_ts"] = latest.get("ts")
+                ctx["last_backtest_summary"] = latest.get("backtest_summary")
+                ctx["last_trade_forensics"] = latest.get("trade_forensics")
+
+                metrics = {}
+                bt = latest.get("backtest_summary") if isinstance(latest.get("backtest_summary"), dict) else {}
+                if isinstance(bt.get("metrics"), dict):
+                    metrics = bt.get("metrics")
+
+                profit_pct = metrics.get("profit_total_pct")
+                max_dd_pct = metrics.get("max_drawdown_pct")
+                if max_dd_pct is None:
+                    tf = latest.get("trade_forensics") if isinstance(latest.get("trade_forensics"), dict) else {}
+                    ra = tf.get("risk_adjusted") if isinstance(tf.get("risk_adjusted"), dict) else {}
+                    max_dd_pct = ra.get("max_drawdown_pct")
+
+                if profit_pct is not None:
+                    ctx["last_backtest_profit_pct"] = profit_pct
+                if max_dd_pct is not None:
+                    ctx["last_backtest_max_dd_pct"] = max_dd_pct
+
+                total_trades = metrics.get("total_trades")
+                if total_trades is None:
+                    total_trades = metrics.get("trades")
+                if total_trades is not None:
+                    ctx["last_backtest_total_trades"] = total_trades
+
+                tf = latest.get("trade_forensics") if isinstance(latest.get("trade_forensics"), dict) else {}
+                tfreq = tf.get("trade_frequency") if isinstance(tf.get("trade_frequency"), dict) else {}
+                avg_tpd = tfreq.get("avg_trades_per_day")
+                if avg_tpd is not None:
+                    ctx["last_backtest_trades_per_day"] = avg_tpd
+        except Exception as e:
+            ctx["performance_store_error"] = str(e)
+
+    try:
+        return state.strategy_service.chat(
+            req.message,
+            history=req.history,
+            strategy_code=disk_code or req.strategy_code,
+            context=ctx,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/ollama/ping")
 def ollama_ping() -> Dict[str, Any]:
     try:
@@ -527,12 +750,88 @@ def freqtrade_profit() -> Any:
 
 @app.get("/api/freqtrade/show_config")
 def freqtrade_show_config() -> Any:
-    return state._freqtrade_request_json("GET", "/api/v1/show_config")
+    state.ensure_bot_config_exists()
+    try:
+        with open(BOT_CONFIG_PATH, "r", encoding="utf-8") as f:
+            bot_cfg = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"failed to read bot config: {e}")
+
+    if not isinstance(bot_cfg, dict):
+        raise HTTPException(status_code=500, detail="user_data/config.json must be a JSON object")
+
+    ex = bot_cfg.get("exchange") if isinstance(bot_cfg.get("exchange"), dict) else {}
+    exchange_name = ex.get("name") if isinstance(ex.get("name"), str) else bot_cfg.get("exchange")
+    if not isinstance(exchange_name, str):
+        exchange_name = ""
+
+    return {
+        "strategy": bot_cfg.get("strategy"),
+        "timeframe": bot_cfg.get("timeframe"),
+        "stake_currency": bot_cfg.get("stake_currency"),
+        "dry_run": bot_cfg.get("dry_run"),
+        "exchange": exchange_name,
+        "pair_whitelist": ex.get("pair_whitelist"),
+        "pairs": ex.get("pair_whitelist"),
+        "fee": (ex.get("fees") or {}).get("taker") if isinstance(ex.get("fees"), dict) else None,
+        "dry_run_wallet": bot_cfg.get("dry_run_wallet"),
+        "max_open_trades": bot_cfg.get("max_open_trades"),
+    }
 
 
 @app.get("/api/freqtrade/whitelist")
 def freqtrade_whitelist() -> Any:
-    return state._freqtrade_request_json("GET", "/api/v1/whitelist")
+    state.ensure_bot_config_exists()
+    try:
+        with open(BOT_CONFIG_PATH, "r", encoding="utf-8") as f:
+            bot_cfg = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"failed to read bot config: {e}")
+
+    if not isinstance(bot_cfg, dict):
+        raise HTTPException(status_code=500, detail="user_data/config.json must be a JSON object")
+
+    pairs: List[str] = []
+
+    def _add_unique(dst: List[str], v: Any) -> None:
+        if not isinstance(v, str):
+            return
+        s = v.strip()
+        if not s:
+            return
+        if s not in dst:
+            dst.append(s)
+
+    def _add_pairs_from_any(val: Any) -> None:
+        if isinstance(val, list):
+            for it in val:
+                if isinstance(it, str):
+                    _add_unique(pairs, it)
+            return
+        if isinstance(val, str):
+            for part in val.replace(";", ",").split(","):
+                _add_unique(pairs, part)
+
+    ex = bot_cfg.get("exchange") if isinstance(bot_cfg.get("exchange"), dict) else {}
+    _add_pairs_from_any(ex.get("pair_whitelist"))
+
+    pls = bot_cfg.get("pairlists")
+    if isinstance(pls, list):
+        for pl in pls:
+            if isinstance(pl, dict):
+                _add_pairs_from_any(pl.get("pair_whitelist"))
+
+    return {"whitelist": pairs}
+
+
+@app.get("/api/bot/show_config")
+def bot_show_config() -> Any:
+    return freqtrade_show_config()
+
+
+@app.get("/api/bot/whitelist")
+def bot_whitelist() -> Any:
+    return freqtrade_whitelist()
 
 
 @app.get("/api/freqtrade/open_trades")
@@ -736,31 +1035,6 @@ def backtest_suggestions(limit: int = 200) -> Dict[str, Any]:
     except Exception as e:
         warnings.append(f"data dir timeframes unavailable: {e}")
 
-    try:
-        wl = state._freqtrade_request_json("GET", "/api/v1/whitelist")
-        if isinstance(wl, dict) and isinstance(wl.get("whitelist"), list):
-            _add_pairs_from_any(wl.get("whitelist"))
-        elif isinstance(wl, list):
-            _add_pairs_from_any(wl)
-    except Exception as e:
-        warnings.append(f"freqtrade whitelist unavailable: {e}")
-
-    try:
-        sc = state._freqtrade_request_json("GET", "/api/v1/show_config")
-        if isinstance(sc, dict):
-            _add_unique(timeframes, sc.get("timeframe"))
-            _add_pairs_from_any(sc.get("pairs"))
-            _add_pairs_from_any(sc.get("pair_whitelist"))
-
-            if fee_default is None and isinstance(sc.get("fee"), (int, float)):
-                fee_default = float(sc.get("fee"))
-            if dry_run_wallet_default is None and isinstance(sc.get("dry_run_wallet"), (int, float)):
-                dry_run_wallet_default = float(sc.get("dry_run_wallet"))
-            if max_open_trades_default is None and isinstance(sc.get("max_open_trades"), (int, float)):
-                max_open_trades_default = int(sc.get("max_open_trades"))
-    except Exception as e:
-        warnings.append(f"freqtrade show_config unavailable: {e}")
-
     return {
         "timeranges": timeranges,
         "timeframes": timeframes,
@@ -825,6 +1099,9 @@ def _job_backtest(job: _Job, req: BacktestRequest) -> Dict[str, Any]:
     summary = summarize_backtest_data(data)
     forensics = build_trade_forensics(data)
 
+    result_kind = bt.get("result_kind")
+    zip_member = bt.get("zip_member")
+
     run_id = state.performance_store.record_run(
         run_type="manual_backtest",
         strategy_code=req.strategy_code,
@@ -848,6 +1125,8 @@ def _job_backtest(job: _Job, req: BacktestRequest) -> Dict[str, Any]:
             "fee": fee,
             "dry_run_wallet": dry_run_wallet,
             "max_open_trades": max_open_trades,
+            "result_kind": result_kind,
+            "zip_member": zip_member,
         },
     )
 
@@ -855,11 +1134,68 @@ def _job_backtest(job: _Job, req: BacktestRequest) -> Dict[str, Any]:
         "performance_run_id": run_id,
         "strategy_class": bt.get("strategy_class"),
         "result_file": bt.get("result_file"),
+        "result_kind": result_kind,
+        "zip_member": zip_member,
         "backtest_summary": summary,
         "trade_forensics": forensics,
         "stdout_tail": str(bt.get("stdout", ""))[-8000:],
         "stderr_tail": str(bt.get("stderr", ""))[-8000:],
     }
+
+
+@app.get("/api/backtest/runs/{run_id}/detail")
+def backtest_run_detail(run_id: int, include_result: bool = True) -> Dict[str, Any]:
+    if not isinstance(run_id, int) or run_id <= 0:
+        raise HTTPException(status_code=400, detail="run_id must be a positive integer")
+
+    try:
+        r = state.performance_store.get_run_by_id(int(run_id))
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    result_file = str(r.get("result_file") or "").strip()
+    extra = r.get("extra") if isinstance(r.get("extra"), dict) else {}
+    result_kind = str(extra.get("result_kind") or "").strip() or None
+    zip_member = str(extra.get("zip_member") or "").strip() or None
+
+    if not result_file:
+        raise HTTPException(status_code=400, detail="selected run has no result_file")
+
+    detail = None
+    if include_result:
+        try:
+            detail = load_backtest_result_file(result_file, result_kind=result_kind, zip_member=zip_member)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    ai_payload = {
+        "strategy_code": r.get("strategy_code"),
+        "timerange": r.get("timerange"),
+        "timeframe": r.get("timeframe"),
+        "pairs": r.get("pairs"),
+        "backtest_summary": r.get("backtest_summary"),
+        "trade_forensics": r.get("trade_forensics"),
+        "market_context": r.get("market_context"),
+    }
+
+    out = {
+        "run": {
+            "id": r.get("id"),
+            "ts": r.get("ts"),
+            "run_type": r.get("run_type"),
+            "strategy_hash": r.get("strategy_hash"),
+            "timerange": r.get("timerange"),
+            "timeframe": r.get("timeframe"),
+            "pairs": r.get("pairs"),
+            "result_file": result_file,
+            "result_kind": result_kind,
+            "zip_member": zip_member,
+        },
+        "ai_payload": ai_payload,
+    }
+    if include_result:
+        out["backtest_result"] = detail
+    return out
 
 
 @app.post("/api/backtest/run")
@@ -909,6 +1245,20 @@ def ai_strategy_generate(req: GenerateStrategyRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
 
     return {"strategy_code": code}
+
+
+@app.post("/api/ai/strategy/repair")
+def ai_strategy_repair(req: RepairStrategyRequest) -> Dict[str, Any]:
+    if not isinstance(req.code, str) or not req.code.strip():
+        raise HTTPException(status_code=400, detail="code is required")
+
+    user_idea = str(req.prompt or "").strip() or "repair"
+    try:
+        return state.strategy_service.repair_strategy_code(req.code, user_idea)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/strategy/save")
@@ -966,19 +1316,35 @@ def _job_refine(job: _Job, req: RefineStrategyRequest) -> Dict[str, Any]:
     job.append_log("Starting refine loop")
     market_context = {}
     try:
-        cfg = state._freqtrade_request_json("GET", "/api/v1/show_config")
+        state.ensure_bot_config_exists()
+        with open(BOT_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        if not isinstance(cfg, dict):
+            raise RuntimeError("user_data/config.json must be a JSON object")
+
         market_context["bot_config"] = {
-            "strategy": cfg.get("strategy") if isinstance(cfg, dict) else None,
-            "timeframe": cfg.get("timeframe") if isinstance(cfg, dict) else None,
-            "stake_currency": cfg.get("stake_currency") if isinstance(cfg, dict) else None,
-            "dry_run": cfg.get("dry_run") if isinstance(cfg, dict) else None,
+            "strategy": cfg.get("strategy"),
+            "timeframe": cfg.get("timeframe"),
+            "stake_currency": cfg.get("stake_currency"),
+            "dry_run": cfg.get("dry_run"),
         }
     except Exception as e:
         market_context["bot_config_error"] = str(e)
 
     try:
-        wl = state._freqtrade_request_json("GET", "/api/v1/whitelist")
-        market_context["whitelist"] = wl
+        state.ensure_bot_config_exists()
+        with open(BOT_CONFIG_PATH, "r", encoding="utf-8") as f:
+            cfg2 = json.load(f)
+        if not isinstance(cfg2, dict):
+            raise RuntimeError("user_data/config.json must be a JSON object")
+
+        ex = cfg2.get("exchange") if isinstance(cfg2.get("exchange"), dict) else {}
+        wl_pairs = []
+        if isinstance(ex, dict):
+            v = ex.get("pair_whitelist")
+            if isinstance(v, list):
+                wl_pairs = [str(p).strip() for p in v if isinstance(p, str) and str(p).strip()]
+        market_context["whitelist"] = {"whitelist": wl_pairs}
     except Exception as e:
         market_context["whitelist_error"] = str(e)
 

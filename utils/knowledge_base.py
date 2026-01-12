@@ -83,14 +83,34 @@ class KnowledgeBase:
         return chunks
 
     def _iter_file_sources(self) -> Iterable[Tuple[str, str, str, float]]:
-        candidates = [
-            ("file", "README.md", os.path.join(self.base_dir, "README.md")),
-            ("file", "docs/AI_ENHANCEMENTS.md", os.path.join(self.base_dir, "docs", "AI_ENHANCEMENTS.md")),
-        ]
+        seen: set[str] = set()
 
-        for _typ, rel, path in candidates:
-            if os.path.exists(path):
-                yield (f"file:{rel}", _typ, rel, os.path.getmtime(path))
+        def _emit(rel: str) -> Iterable[Tuple[str, str, str, float]]:
+            if rel in seen:
+                return
+            path = os.path.join(self.base_dir, *rel.split("/"))
+            if not os.path.exists(path):
+                return
+            seen.add(rel)
+            yield (f"file:{rel}", "file", rel, os.path.getmtime(path))
+
+        yield from _emit("README.md")
+
+        docs_dir = os.path.join(self.base_dir, "docs")
+        if os.path.isdir(docs_dir):
+            for root, _dirs, files in os.walk(docs_dir):
+                for name in files:
+                    if not isinstance(name, str) or not name.lower().endswith(".md"):
+                        continue
+                    path = os.path.join(root, name)
+                    try:
+                        rel = os.path.relpath(path, self.base_dir).replace(os.sep, "/")
+                    except Exception:
+                        continue
+                    if rel in seen:
+                        continue
+                    seen.add(rel)
+                    yield (f"file:{rel}", "file", rel, os.path.getmtime(path))
 
         strat_dir = os.path.join(self.base_dir, "user_data", "strategies")
         if os.path.isdir(strat_dir):
