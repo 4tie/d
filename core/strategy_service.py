@@ -6,7 +6,9 @@ import re
 import time
 import ast
 import json
+from typing import Any
 from utils.ollama_client import OllamaClient
+from utils.openrouter_client import OpenRouterClient
 from utils.strategy_generator import StrategyGenerator
 from utils.strategy_saver import StrategySaver
 from utils.backtest_runner import run_backtest, summarize_backtest_data, build_trade_forensics
@@ -18,16 +20,86 @@ class StrategyService:
     
     def __init__(self):
         self.generator = StrategyGenerator()
-        self.ollama_client = self.generator.ollama
-        self.analysis_client = OllamaClient(base_url=self.generator.ollama.base_url, model=self.generator.ollama.model, options=self.generator.ollama.options)
-        self.risk_client = OllamaClient(base_url=self.generator.ollama.base_url, model=self.generator.ollama.model, options=self.generator.ollama.options)
-        self.chat_client = OllamaClient(base_url=self.generator.ollama.base_url, model=self.generator.ollama.model, options=self.generator.ollama.options)
-        self.repair_client = OllamaClient(base_url=self.generator.ollama.base_url, model=self.generator.ollama.model, options=self.generator.ollama.options)
-        self.repair_fallback_client: OllamaClient | None = None
-        self.refine_client = OllamaClient(base_url=self.generator.ollama.base_url, model=self.generator.ollama.model, options=self.generator.ollama.options)
-        self.refine_fallback_client: OllamaClient | None = None
+
+        self.ai_provider = "ollama"
+
+        # Keep dedicated Ollama clients regardless of active provider
+        self._ollama_generation_client = self.generator.ollama
+        self._ollama_analysis_client = OllamaClient(
+            base_url=self._ollama_generation_client.base_url,
+            model=self._ollama_generation_client.model,
+            options=self._ollama_generation_client.options,
+        )
+        self._ollama_risk_client = OllamaClient(
+            base_url=self._ollama_generation_client.base_url,
+            model=self._ollama_generation_client.model,
+            options=self._ollama_generation_client.options,
+        )
+        self._ollama_chat_client = OllamaClient(
+            base_url=self._ollama_generation_client.base_url,
+            model=self._ollama_generation_client.model,
+            options=self._ollama_generation_client.options,
+        )
+        self._ollama_repair_client = OllamaClient(
+            base_url=self._ollama_generation_client.base_url,
+            model=self._ollama_generation_client.model,
+            options=self._ollama_generation_client.options,
+        )
+        self._ollama_repair_fallback_client: OllamaClient | None = None
+        self._ollama_refine_client = OllamaClient(
+            base_url=self._ollama_generation_client.base_url,
+            model=self._ollama_generation_client.model,
+            options=self._ollama_generation_client.options,
+        )
+        self._ollama_refine_fallback_client: OllamaClient | None = None
+
+        # Keep dedicated OpenRouter clients regardless of active provider
+        self._openrouter_generation_client = OpenRouterClient(api_key="", model="")
+        self._openrouter_analysis_client = OpenRouterClient(api_key="", model="")
+        self._openrouter_risk_client = OpenRouterClient(api_key="", model="")
+        self._openrouter_chat_client = OpenRouterClient(api_key="", model="")
+        self._openrouter_repair_client = OpenRouterClient(api_key="", model="")
+        self._openrouter_refine_client = OpenRouterClient(api_key="", model="")
+
+        # Active clients (switched by provider)
+        self.analysis_client: Any = self._ollama_analysis_client
+        self.risk_client: Any = self._ollama_risk_client
+        self.chat_client: Any = self._ollama_chat_client
+        self.repair_client: Any = self._ollama_repair_client
+        self.repair_fallback_client: Any | None = self._ollama_repair_fallback_client
+        self.refine_client: Any = self._ollama_refine_client
+        self.refine_fallback_client: Any | None = self._ollama_refine_fallback_client
         self.saver = StrategySaver()
         self.performance_store = AIPerformanceStore()
+
+    def _provider_label(self) -> str:
+        return "OpenRouter" if self.ai_provider == "openrouter" else "Ollama"
+
+    def set_ai_provider(self, provider: str) -> None:
+        p = str(provider or "").strip().lower()
+        if p not in ("ollama", "openrouter"):
+            raise ValueError("ai_provider must be 'ollama' or 'openrouter'")
+
+        self.ai_provider = p
+
+        if p == "openrouter":
+            self.generator.set_ai_client(self._openrouter_generation_client)
+            self.analysis_client = self._openrouter_analysis_client
+            self.risk_client = self._openrouter_risk_client
+            self.chat_client = self._openrouter_chat_client
+            self.repair_client = self._openrouter_repair_client
+            self.repair_fallback_client = None
+            self.refine_client = self._openrouter_refine_client
+            self.refine_fallback_client = None
+        else:
+            self.generator.set_ai_client(self._ollama_generation_client)
+            self.analysis_client = self._ollama_analysis_client
+            self.risk_client = self._ollama_risk_client
+            self.chat_client = self._ollama_chat_client
+            self.repair_client = self._ollama_repair_client
+            self.repair_fallback_client = self._ollama_repair_fallback_client
+            self.refine_client = self._ollama_refine_client
+            self.refine_fallback_client = self._ollama_refine_fallback_client
 
     def update_ollama_settings(self, base_url: str, model: str, options: dict | None = None, task_models: dict | None = None) -> None:
         generation_model = model
@@ -48,27 +120,100 @@ class StrategyService:
             refine_model = str(task_models.get("strategy_refine") or refine_model)
             refine_fallback_model = str(task_models.get("strategy_refine_fallback") or "")
 
-        self.generator.update_ollama_settings(base_url=base_url, model=generation_model, options=options)
-        self.analysis_client.update_settings(base_url=base_url, model=analysis_model, options=options)
-        self.risk_client.update_settings(base_url=base_url, model=risk_model, options=options)
-        self.chat_client.update_settings(base_url=base_url, model=chat_model, options=options)
-        self.repair_client.update_settings(base_url=base_url, model=repair_model, options=options)
+        self._ollama_generation_client.update_settings(base_url=base_url, model=generation_model, options=options)
+        self._ollama_analysis_client.update_settings(base_url=base_url, model=analysis_model, options=options)
+        self._ollama_risk_client.update_settings(base_url=base_url, model=risk_model, options=options)
+        self._ollama_chat_client.update_settings(base_url=base_url, model=chat_model, options=options)
+        self._ollama_repair_client.update_settings(base_url=base_url, model=repair_model, options=options)
         if repair_fallback_model.strip():
-            if self.repair_fallback_client is None:
-                self.repair_fallback_client = OllamaClient(base_url=base_url, model=repair_fallback_model.strip(), options=options)
+            if self._ollama_repair_fallback_client is None:
+                self._ollama_repair_fallback_client = OllamaClient(base_url=base_url, model=repair_fallback_model.strip(), options=options)
             else:
-                self.repair_fallback_client.update_settings(base_url=base_url, model=repair_fallback_model.strip(), options=options)
+                self._ollama_repair_fallback_client.update_settings(base_url=base_url, model=repair_fallback_model.strip(), options=options)
         else:
-            self.repair_fallback_client = None
+            self._ollama_repair_fallback_client = None
 
-        self.refine_client.update_settings(base_url=base_url, model=refine_model, options=options)
+        self._ollama_refine_client.update_settings(base_url=base_url, model=refine_model, options=options)
         if refine_fallback_model.strip():
-            if self.refine_fallback_client is None:
-                self.refine_fallback_client = OllamaClient(base_url=base_url, model=refine_fallback_model.strip(), options=options)
+            if self._ollama_refine_fallback_client is None:
+                self._ollama_refine_fallback_client = OllamaClient(base_url=base_url, model=refine_fallback_model.strip(), options=options)
             else:
-                self.refine_fallback_client.update_settings(base_url=base_url, model=refine_fallback_model.strip(), options=options)
+                self._ollama_refine_fallback_client.update_settings(base_url=base_url, model=refine_fallback_model.strip(), options=options)
         else:
-            self.refine_fallback_client = None
+            self._ollama_refine_fallback_client = None
+
+        self.set_ai_provider(self.ai_provider)
+
+    def update_openrouter_settings(
+        self,
+        *,
+        api_key: str,
+        model: str,
+        base_url: str = "https://openrouter.ai/api/v1",
+        options: dict | None = None,
+    ) -> None:
+        opts = options if isinstance(options, dict) else {}
+
+        self._openrouter_generation_client.update_settings(api_key=api_key, model=model, base_url=base_url, options=opts)
+        self._openrouter_analysis_client.update_settings(api_key=api_key, model=model, base_url=base_url, options=opts)
+        self._openrouter_risk_client.update_settings(api_key=api_key, model=model, base_url=base_url, options=opts)
+        self._openrouter_chat_client.update_settings(api_key=api_key, model=model, base_url=base_url, options=opts)
+        self._openrouter_repair_client.update_settings(api_key=api_key, model=model, base_url=base_url, options=opts)
+        self._openrouter_refine_client.update_settings(api_key=api_key, model=model, base_url=base_url, options=opts)
+
+        # Validate free-model selection when fully configured.
+        if str(api_key or "").strip() and str(model or "").strip():
+            self._openrouter_generation_client.ensure_selected_model_is_free()
+
+        self.set_ai_provider(self.ai_provider)
+
+    def update_ai_settings(
+        self,
+        *,
+        provider: str,
+        ollama_base_url: str,
+        ollama_model: str,
+        ollama_options: dict | None = None,
+        ollama_task_models: dict | None = None,
+        openrouter_api_key: str,
+        openrouter_model: str,
+        openrouter_base_url: str = "https://openrouter.ai/api/v1",
+        openrouter_options: dict | None = None,
+    ) -> None:
+        self.update_ollama_settings(
+            base_url=ollama_base_url,
+            model=ollama_model,
+            options=ollama_options,
+            task_models=ollama_task_models,
+        )
+        self.update_openrouter_settings(
+            api_key=openrouter_api_key,
+            model=openrouter_model,
+            base_url=openrouter_base_url,
+            options=openrouter_options,
+        )
+        self.set_ai_provider(provider)
+
+    def ollama_is_available(self) -> bool:
+        return bool(self._ollama_generation_client.is_available())
+
+    def ollama_get_models(self, *, force_refresh: bool = False) -> list[str]:
+        return list(self._ollama_generation_client.get_available_models(force_refresh=bool(force_refresh)))
+
+    def openrouter_is_available(self) -> bool:
+        return bool(self._openrouter_generation_client.is_available())
+
+    def openrouter_is_ready(self) -> bool:
+        try:
+            if not self._openrouter_generation_client.is_available():
+                return False
+            self._openrouter_generation_client.ensure_selected_model_is_free()
+            return True
+        except Exception:
+            return False
+
+    def openrouter_list_free_models(self, *, force_refresh: bool = False) -> list[str]:
+        return list(self._openrouter_generation_client.list_free_models(force_refresh=bool(force_refresh)))
 
     def chat(
         self,
